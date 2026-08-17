@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { toRomaji } from '$lib/romaji';
+
 	type Candidate = {
 		lemma: string;
 		surface: string;
@@ -91,6 +93,9 @@
 							{c.surface}
 							{#if c.reading && c.reading !== c.surface}
 								<span class="ml-2 text-sm text-neutral-500">{c.reading}</span>
+								<span class="ml-2 font-mono text-[10px] text-neutral-600"
+									>{toRomaji(c.reading)}</span
+								>
 							{/if}
 						</p>
 						<span class="shrink-0 font-mono text-[10px] text-neutral-600">

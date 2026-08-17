@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Token } from '$lib/tokenize';
+	import { toRomaji } from '$lib/romaji';
 
 	type Sense = { pos: string[]; misc: string[]; info: string[]; gloss: string[] };
 	type Entry = { id: string; kanji: string[]; kana: string[]; senses: Sense[]; common: boolean };
@@ -52,6 +53,9 @@
 			{token.surface}
 			{#if token.reading && token.reading !== token.surface}
 				<span class="ml-2 text-base text-neutral-400">{token.reading}</span>
+				<!-- Romaji only here, where a reading was already revealed by a click.
+				     Under the line itself it would be read instead of the kana. -->
+				<span class="ml-2 font-mono text-xs text-neutral-600">{toRomaji(token.reading)}</span>
 			{/if}
 			{#if token.lemma !== token.surface}
 				<span class="ml-2 font-mono text-xs text-neutral-600">{token.lemma}</span>

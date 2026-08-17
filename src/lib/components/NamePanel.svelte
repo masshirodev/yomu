@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { toRomaji } from '$lib/romaji';
+
 	type NameRow = { surface: string; reading: string | null; seen_count: number };
 
 	type Props = { names: NameRow[]; onchange: (names: NameRow[]) => void; onclose: () => void };
@@ -57,6 +59,9 @@
 						value={name.reading ?? ''}
 						onchange={(e) => save(name.surface, e.currentTarget.value)}
 					/>
+					{#if name.reading}
+						<span class="font-mono text-[10px] text-neutral-600">{toRomaji(name.reading)}</span>
+					{/if}
 					<span class="font-mono text-[10px] text-neutral-600">
 						{saving === name.surface ? 'saving…' : `${name.seen_count}×`}
 					</span>
