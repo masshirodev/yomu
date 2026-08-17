@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { clean, emptyState, parseEvent, type ParseState, type RawEvent } from './parse';
+import {
+	clean,
+	containsJapanese,
+	emptyState,
+	parseEvent,
+	type ParseState,
+	type RawEvent
+} from './parse';
 
 /**
  * Every string in this file is real output from the Phase 0 captures under
@@ -89,5 +96,37 @@ describe('parseEvent', () => {
 		const { lines, state } = parseEvent(event('   \n\n  '), { pendingSpeaker: '橘シェリー' });
 		expect(lines).toEqual([]);
 		expect(state.pendingSpeaker).toBe('橘シェリー');
+	});
+});
+
+describe('containsJapanese — keeping the clipboard out of the line store', () => {
+	it('accepts ordinary game text', () => {
+		expect(containsJapanese('それはまだありませんね！')).toBe(true);
+		expect(containsJapanese('桜羽エマ')).toBe(true);
+		expect(containsJapanese('――ここは牢獄だ。')).toBe(true);
+	});
+
+	it('rejects the things that actually got captured by accident', () => {
+		// All four of these reached the live line store before this filter existed.
+		expect(containsJapanese('mtr -rw 193.203.183.1')).toBe(false);
+		expect(containsJapanese('bridge/yomu-send.sh')).toBe(false);
+		expect(containsJapanese('YOMU_URL=http://100.127.94.72:42139 \\')).toBe(false);
+		expect(containsJapanese('YOMU_INGEST_TOKEN=71edb2c25f5750a64f74a0f3312b199b')).toBe(false);
+	});
+
+	it('rejects a password-shaped string', () => {
+		expect(containsJapanese('hunter2-Correct-Horse-Battery')).toBe(false);
+	});
+});
+
+describe('parseEvent drops non-Japanese lines', () => {
+	it('ignores a copied shell command entirely', () => {
+		expect(parseEvent(event('git push origin main')).lines).toEqual([]);
+	});
+
+	it('keeps the Japanese half of a mixed event', () => {
+		const { lines } = parseEvent(event('some ascii junk\n牢屋に閉じ込められた。'));
+		expect(lines).toHaveLength(1);
+		expect(lines[0].text).toBe('牢屋に閉じ込められた。');
 	});
 });

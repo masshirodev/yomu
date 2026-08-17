@@ -46,13 +46,32 @@ fi
 echo "bridging clipboard -> $YOMU_URL/api/ingest"
 echo "Ctrl-C to stop."
 
+# Only forward while the game is actually running. The clipboard is shared with
+# everything else on the machine, so without this the bridge relays whatever you
+# copy -- and it already relayed an ingest token pasted from a setup command,
+# which then landed in the line store. Two independent gates guard that now:
+# this one, and a Japanese-content check in the handler below.
+export YOMU_GAME_PROCESS="${YOMU_GAME_PROCESS:-manosaba.exe}"
+
 exec wl-paste --type text --watch bash -c '
   ts=$EPOCHREALTIME
+  # Cheapest gate first: nothing is forwarded when the game is not running.
+  if [ -n "$YOMU_GAME_PROCESS" ] && ! pgrep -f "$YOMU_GAME_PROCESS" >/dev/null 2>&1; then
+    exit 0
+  fi
   exec python3 -c "
 import json, os, sys, urllib.request
 
 text = sys.stdin.read()
 if not text.strip():
+    sys.exit(0)
+
+# Every line this VN produces contains kana or kanji; almost nothing you copy by
+# accident does. Filtering HERE rather than server-side is the point -- a
+# password or token that is never sent cannot be stored, logged, or leaked by
+# something downstream.
+import re
+if not re.search(r\"[\\u3040-\\u30ff\\u3400-\\u4dbf\\u4e00-\\u9fff]\", text):
     sys.exit(0)
 
 payload = json.dumps({

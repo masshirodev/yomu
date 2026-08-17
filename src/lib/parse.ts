@@ -81,6 +81,26 @@ function looksLikeSpeaker(text: string): boolean {
 }
 
 /**
+ * Does this look like text from the game at all?
+ *
+ * The clipboard is shared with everything else on the machine, so the bridge
+ * sees every copy: shell commands, URLs, and -- this is not hypothetical, it is
+ * what happened -- an ingest token pasted from a setup command, which was then
+ * POSTed and written to the line store.
+ *
+ * Requiring Japanese is a crude filter and the right one. Every line this VN
+ * produces contains kana or kanji; almost nothing accidentally copied does. The
+ * asymmetry is the point: dropping a rare all-ASCII game line costs one missing
+ * line, while accepting one copied password costs a credential in a database
+ * that was never meant to hold one.
+ */
+const JAPANESE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u;
+
+export function containsJapanese(text: string): boolean {
+	return JAPANESE.test(text);
+}
+
+/**
  * A speaker name seen with no line yet attached, carried to the next event.
  *
  * Textractor's Copy to Clipboard follows whichever thread is *selected*, so name
@@ -114,7 +134,10 @@ export function parseEvent(event: RawEvent, state: ParseState = emptyState()): P
 		event.text
 			.split('\n')
 			.map(clean)
-			.filter((p) => p.length > 0)
+			// Second line of defence. The bridge filters before sending so secrets
+			// never leave the machine; this makes sure nothing non-Japanese is
+			// stored even if some other source posts it.
+			.filter((p) => p.length > 0 && containsJapanese(p))
 	);
 
 	const lines: ParsedLine[] = [];
