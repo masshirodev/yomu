@@ -1,0 +1,18 @@
+@import 'tailwindcss';
+
+@theme {
+	/* Japanese text needs a font stack that will not silently fall back to a
+	   Chinese glyph set -- 直 and 骨 render visibly wrong in SC fonts, which is
+	   confusing precisely when you are learning what a character looks like. */
+	--font-jp:
+		'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, 'IPAexGothic', sans-serif;
+}
+
+:root {
+	color-scheme: dark;
+}
+
+html,
+body {
+	height: 100%;
+}
