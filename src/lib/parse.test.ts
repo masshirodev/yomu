@@ -3,6 +3,7 @@ import {
 	clean,
 	containsJapanese,
 	emptyState,
+	mostlyLatin,
 	parseEvent,
 	type ParseState,
 	type RawEvent
@@ -93,7 +94,10 @@ describe('parseEvent', () => {
 	});
 
 	it('ignores an empty event without losing a held speaker', () => {
-		const { lines, state } = parseEvent(event('   \n\n  '), { pendingSpeaker: '橘シェリー' });
+		const { lines, state } = parseEvent(event('   \n\n  '), {
+			pendingSpeaker: '橘シェリー',
+			pendingSince: 0
+		});
 		expect(lines).toEqual([]);
 		expect(state.pendingSpeaker).toBe('橘シェリー');
 	});
@@ -128,5 +132,77 @@ describe('parseEvent drops non-Japanese lines', () => {
 		const { lines } = parseEvent(event('some ascii junk\n牢屋に閉じ込められた。'));
 		expect(lines).toHaveLength(1);
 		expect(lines[0].text).toBe('牢屋に閉じ込められた。');
+	});
+});
+
+describe('a held speaker must not latch onto narration', () => {
+	// Every string here is from the live line store, where the name box fired
+	// 二階堂ヒロ, that character's line never arrived, and the name attached
+	// itself to the narration that followed.
+	const names = ['二階堂ヒロ', '桜羽エマ'];
+	const at = (text: string, state: ParseState, ts = 1000) =>
+		parseEvent({ source: 'clipboard', text, ts }, state, { names, now: ts });
+
+	it('does not attribute narration about a character to that character', () => {
+		const held = at('二階堂ヒロ', emptyState()).state;
+		const { lines } = at('ぎりっと強く奥歯を噛みしめる音が響き、ヒロはエマへと振り向く。', held);
+
+		expect(lines[0].speaker).toBeNull();
+		expect(lines[0].kind).toBe('narration');
+	});
+
+	it('catches the other mis-attributed line too', () => {
+		const held = at('二階堂ヒロ', emptyState()).state;
+		const { lines } = at('ヒロはエマを存在ごと無視することに決めたのか、歩みを止めない。', held);
+		expect(lines[0].speaker).toBeNull();
+	});
+
+	it('still attributes real dialogue that mentions another character', () => {
+		// ヒロちゃんと is エマ talking about ヒロ, not narration — the と particle
+		// is excluded from the third-person test precisely for this line.
+		const held = at('桜羽エマ', emptyState()).state;
+		const { lines } = at('ボク、変わったんだよ。ヒロちゃんと友だちになりたいんだ。', held);
+
+		expect(lines[0].speaker).toBe('桜羽エマ');
+		expect(lines[0].kind).toBe('dialogue');
+	});
+
+	it('still attributes a character saying their own name', () => {
+		const held = at('桜羽エマ', emptyState()).state;
+		expect(at('ボ、ボクは、桜羽エマ！', held).lines[0].speaker).toBe('桜羽エマ');
+	});
+
+	it('drops a speaker that has gone stale', () => {
+		// The real gap was about five minutes. Dialogue follows its name box
+		// within a moment; anything later is a different line entirely.
+		const held = at('二階堂ヒロ', emptyState(), 1000).state;
+		const { lines } = at('ボク、諦めないから！', held, 1000 + 5 * 60_000);
+		expect(lines[0].speaker).toBeNull();
+	});
+
+	it('keeps a speaker that arrives promptly', () => {
+		const held = at('二階堂ヒロ', emptyState(), 1000).state;
+		expect(at('ボク、諦めないから！', held, 1500).lines[0].speaker).toBe('二階堂ヒロ');
+	});
+});
+
+describe('mostlyLatin — keeping the reader out of its own line store', () => {
+	it('rejects the explanation text that got copied back in', () => {
+		// Three of these reached the live store: they contain Japanese, so the
+		// kana check passes them, but they are plainly not lines from the game.
+		expect(
+			mostlyLatin('Negative form of 諦める (to give up). The ない form is the plain negative')
+		).toBe(true);
+	});
+
+	it('accepts real game lines', () => {
+		expect(mostlyLatin('ボ、ボク諦めないから！')).toBe(false);
+		expect(mostlyLatin('ぎりっと強く奥歯を噛みしめる音が響き、ヒロはエマへと振り向く。')).toBe(
+			false
+		);
+	});
+
+	it('is not upset by empty input', () => {
+		expect(mostlyLatin('')).toBe(false);
 	});
 });

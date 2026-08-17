@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { parseEvent, type SourceKind } from '$lib/parse';
-import { appendLines, currentSession, noteName } from '$lib/server/db';
+import { appendLines, currentSession, listNames, noteName } from '$lib/server/db';
 import { publish } from '$lib/server/bus';
 import { saveState, stateFor } from '$lib/server/parse-state';
 import { requireIngestToken } from '$lib/server/auth';
@@ -32,9 +32,15 @@ export const POST: RequestHandler = async ({ request }) => {
 	// A speaker name arriving as its own event is held until the line it belongs
 	// to shows up, so attribution survives name and dialogue being on separate
 	// Textractor threads.
+	// Known names let the parser spot third-person narration about a character
+	// (ヒロは…) and refuse to attribute it to them, which is how narration was
+	// getting labelled as dialogue.
+	const known = listNames().map((n) => n.surface);
+
 	const { lines, state } = parseEvent(
 		{ source, text: body.text, ts, thread: body.thread },
-		stateFor(sessionId)
+		stateFor(sessionId),
+		{ names: known, now: ts }
 	);
 	saveState(sessionId, state);
 

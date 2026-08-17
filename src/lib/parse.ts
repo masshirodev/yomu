@@ -112,9 +112,71 @@ export function containsJapanese(text: string): boolean {
  * works the moment both threads do reach us, by whatever route, without the
  * parser needing to know how.
  */
-export type ParseState = { pendingSpeaker: string | null };
+export type ParseState = {
+	pendingSpeaker: string | null;
+	/** When the speaker was seen, so a stale one cannot latch onto a later line. */
+	pendingSince: number;
+};
 
-export const emptyState = (): ParseState => ({ pendingSpeaker: null });
+export const emptyState = (): ParseState => ({ pendingSpeaker: null, pendingSince: 0 });
+
+/**
+ * A held speaker only belongs to the line that immediately follows it.
+ *
+ * Observed failure: the name box fired 二階堂ヒロ, that character's line never
+ * reached us, and the name then attached itself to a narration line arriving
+ * five minutes later. Real dialogue follows its name box within a moment.
+ */
+export const SPEAKER_TTL_MS = 15_000;
+
+/**
+ * Name fragments, for spotting third-person narration about a character.
+ *
+ * Names arrive whole (二階堂ヒロ) but narration refers to the character by one
+ * part (ヒロは...), so each name is split at the kanji/katakana boundary that
+ * separates surname from given name in this cast.
+ */
+export function nameFragments(names: readonly string[]): string[] {
+	const out = new Set<string>();
+	for (const name of names) {
+		if (!name) continue;
+		out.add(name);
+		for (const piece of name.split(/(?<=[\u4e00-\u9fff])(?=[\u30a0-\u30ff])/u)) {
+			if (piece.length >= 2) out.add(piece);
+		}
+	}
+	return [...out];
+}
+
+/**
+ * Third-person reference: a character's name carrying a subject or object
+ * particle. Narration says ヒロはエマを...; a speaker does not say their own
+ * name that way.
+ *
+ * と and の are deliberately excluded -- ヒロちゃんと友だちになりたい is エマ
+ * talking *about* ヒロ, not narration, and excluding them keeps that line
+ * correctly attributed.
+ */
+export function looksLikeNarration(text: string, fragments: readonly string[]): boolean {
+	return fragments.some((f) => new RegExp(`${f}(?:ちゃん|くん|さん)?[はがをへ]`, 'u').test(text));
+}
+
+/**
+ * Reject text that is mostly Latin script.
+ *
+ * Game lines are essentially pure Japanese. This catches the reader's own
+ * explanation text being copied back in -- "Negative form of 諦める (to give
+ * up)..." contains Japanese and so passes the kana check, but is obviously not
+ * a line from the game. Three of those reached the line store.
+ */
+const MAX_LATIN_RATIO = 0.3;
+
+export function mostlyLatin(text: string): boolean {
+	const letters = text.replace(/\s/gu, '');
+	if (letters.length === 0) return false;
+	const latin = (letters.match(/[A-Za-z]/gu) ?? []).length;
+	return latin / letters.length > MAX_LATIN_RATIO;
+}
 
 export type ParseResult = { lines: ParsedLine[]; state: ParseState };
 
@@ -129,19 +191,31 @@ export type ParseResult = { lines: ParsedLine[]; state: ParseState };
  * thing stays pure and testable, and so two concurrent sessions cannot bleed
  * speakers into each other.
  */
-export function parseEvent(event: RawEvent, state: ParseState = emptyState()): ParseResult {
+export function parseEvent(
+	event: RawEvent,
+	state: ParseState = emptyState(),
+	options: { names?: readonly string[]; now?: number } = {}
+): ParseResult {
+	const now = options.now ?? event.ts ?? Date.now();
+	const fragments = nameFragments(options.names ?? []);
+
 	const parts = dedupeRepeated(
 		event.text
 			.split('\n')
 			.map(clean)
 			// Second line of defence. The bridge filters before sending so secrets
-			// never leave the machine; this makes sure nothing non-Japanese is
-			// stored even if some other source posts it.
-			.filter((p) => p.length > 0 && containsJapanese(p))
+			// never leave the machine; this makes sure nothing non-Japanese and
+			// nothing that is mostly English is stored even if another source posts it.
+			.filter((p) => p.length > 0 && containsJapanese(p) && !mostlyLatin(p))
 	);
 
 	const lines: ParsedLine[] = [];
-	let pendingSpeaker = state.pendingSpeaker;
+	// A speaker older than the window is stale and dropped rather than attached.
+	let pendingSpeaker =
+		state.pendingSpeaker && now - state.pendingSince <= SPEAKER_TTL_MS
+			? state.pendingSpeaker
+			: null;
+	let pendingSince = state.pendingSince;
 
 	for (const part of parts) {
 		// A short unpunctuated fragment is a name. It is never emitted as a line
@@ -149,15 +223,23 @@ export function parseEvent(event: RawEvent, state: ParseState = emptyState()): P
 		// until the text it belongs to arrives.
 		if (looksLikeSpeaker(part)) {
 			pendingSpeaker = part;
+			pendingSince = now;
 			continue;
 		}
+
+		// The name box fires for narration too, so a held speaker must not be
+		// attached to a line that is plainly describing that character rather
+		// than voicing them.
+		const narration = looksLikeNarration(part, fragments);
+		const speaker = narration ? null : pendingSpeaker;
+
 		lines.push({
-			kind: pendingSpeaker ? 'dialogue' : 'narration',
-			speaker: pendingSpeaker,
+			kind: speaker ? 'dialogue' : 'narration',
+			speaker,
 			text: part
 		});
 		pendingSpeaker = null;
 	}
 
-	return { lines, state: { pendingSpeaker } };
+	return { lines, state: { pendingSpeaker, pendingSince } };
 }
