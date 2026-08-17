@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tokenize, type Token } from '$lib/tokenize';
+	import { applyNames, type NameEntry } from '$lib/names';
 	import { track } from '$lib/telemetry';
 
 	type Props = {
@@ -8,10 +9,11 @@
 		speaker: string | null;
 		text: string;
 		furiganaMode: 'none' | 'narration' | 'all';
+		names: NameEntry[];
 		onlookup: (token: Token, lineId: number) => void;
 	};
 
-	let { id, kind, speaker, text, furiganaMode, onlookup }: Props = $props();
+	let { id, kind, speaker, text, furiganaMode, names, onlookup }: Props = $props();
 
 	let tokens = $state<Token[] | null>(null);
 
@@ -23,10 +25,14 @@
 	);
 
 	$effect(() => {
+		// Depends on names as well as text, so filling in a reading re-renders the
+		// lines already on screen rather than only the next ones.
+		const known = names;
+
 		let cancelled = false;
 		tokenize(text)
 			.then((t) => {
-				if (!cancelled) tokens = t;
+				if (!cancelled) tokens = applyNames(t, known);
 			})
 			.catch(() => {
 				// Fall back to unanalysed text rather than showing nothing. A line you

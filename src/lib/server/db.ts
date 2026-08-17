@@ -45,6 +45,18 @@ CREATE TABLE IF NOT EXISTS events (
   at          INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_session ON events(session_id, at);
+
+-- Character names, so the tokenizer stops splitting them. Discovered
+-- automatically from the speaker thread; the reading needs a human, because
+-- JMnedict offers four readings for 桜羽 and eight for 橘 and picks the wrong
+-- one here. Confidently wrong is worse than absent for something the reader
+-- sees on nearly every line.
+CREATE TABLE IF NOT EXISTS names (
+  surface    TEXT PRIMARY KEY,
+  reading    TEXT,
+  seen_count INTEGER NOT NULL DEFAULT 0,
+  first_seen INTEGER NOT NULL
+);
 `);
 
 export function openSession(now = Date.now()): number {
@@ -117,6 +129,29 @@ export function recordEvent(
 	at: number
 ): void {
 	insertEvent.run(sessionId, lineId, type, payload === null ? null : JSON.stringify(payload), at);
+}
+
+const upsertName = db.prepare(
+	`INSERT INTO names (surface, reading, seen_count, first_seen)
+	 VALUES (?, NULL, 1, ?)
+	 ON CONFLICT(surface) DO UPDATE SET seen_count = seen_count + 1`
+);
+
+/** Record a speaker sighting. The reading is left for a human to supply. */
+export function noteName(surface: string, at: number): void {
+	if (surface) upsertName.run(surface, at);
+}
+
+export type NameRow = { surface: string; reading: string | null; seen_count: number };
+
+export function listNames(): NameRow[] {
+	return db
+		.prepare('SELECT surface, reading, seen_count FROM names ORDER BY seen_count DESC, surface')
+		.all() as NameRow[];
+}
+
+export function setNameReading(surface: string, reading: string | null): void {
+	db.prepare('UPDATE names SET reading = ? WHERE surface = ?').run(reading || null, surface);
 }
 
 export function recentLines(sessionId: number, limit = 200): StoredLine[] {

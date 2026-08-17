@@ -21,8 +21,14 @@ RUN yarn sync:dict && yarn build
 # self-contained and a deploy cannot leave the reader without definitions.
 # Baked into the image rather than the data volume: it is derived, identical for
 # every deploy, and rebuilding it is how it gets updated.
-FROM build AS dictionary
-RUN yarn build:dict --out /app/jmdict.db
+#
+# Built from `dependencies` rather than `build`, and copying only the one script
+# it needs, so editing application source does not invalidate this layer. It
+# downloads 12MB and indexes 218k entries; paying that on every deploy would
+# make the build cost track the wrong thing entirely.
+FROM dependencies AS dictionary
+COPY scripts/build-dict.js ./scripts/build-dict.js
+RUN node --max-old-space-size=2048 scripts/build-dict.js --out /app/jmdict.db
 
 FROM base AS production-dependencies
 COPY package.json yarn.lock ./

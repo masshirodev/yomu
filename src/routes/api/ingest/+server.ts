@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { parseEvent, type SourceKind } from '$lib/parse';
-import { appendLines, currentSession } from '$lib/server/db';
+import { appendLines, currentSession, noteName } from '$lib/server/db';
 import { publish } from '$lib/server/bus';
 import { saveState, stateFor } from '$lib/server/parse-state';
 import { requireIngestToken } from '$lib/server/auth';
@@ -37,6 +37,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		stateFor(sessionId)
 	);
 	saveState(sessionId, state);
+
+	// Every speaker the name thread produces is a character name the tokenizer
+	// does not know. Collecting them here means the cast assembles itself as the
+	// story introduces it, and only the readings ever need typing.
+	for (const line of lines) {
+		if (line.speaker) noteName(line.speaker, ts);
+	}
 
 	if (lines.length === 0) return json({ accepted: 0 });
 

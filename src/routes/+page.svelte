@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import Line from '$lib/components/Line.svelte';
 	import DefinitionPanel from '$lib/components/DefinitionPanel.svelte';
+	import NamePanel from '$lib/components/NamePanel.svelte';
 	import { loadTokenizer, type Token } from '$lib/tokenize';
 	import { track } from '$lib/telemetry';
 
@@ -20,6 +21,8 @@
 	let dictError = $state<string | null>(null);
 	let furiganaMode = $state<'none' | 'narration' | 'all'>('narration');
 	let selected = $state<{ token: Token; lineId: number } | null>(null);
+	let names = $state<{ surface: string; reading: string | null; seen_count: number }[]>([]);
+	let showNames = $state(false);
 	let viewport = $state<HTMLDivElement | null>(null);
 
 	const narrationCount = $derived(lines.filter((l) => l.kind === 'narration').length);
@@ -34,6 +37,11 @@
 		loadTokenizer()
 			.then(() => (dictReady = true))
 			.catch((e) => (dictError = String(e)));
+
+		fetch('/api/names')
+			.then((r) => r.json())
+			.then((d) => (names = d.names))
+			.catch(() => {});
 
 		const es = new EventSource('/api/stream');
 
@@ -83,6 +91,13 @@
 				{/each}
 			</div>
 
+			<button
+				class="hover:text-neutral-400 {names.some((n) => !n.reading) ? 'text-amber-600/80' : ''}"
+				onclick={() => (showNames = !showNames)}
+			>
+				names{names.some((n) => !n.reading) ? ` (${names.filter((n) => !n.reading).length})` : ''}
+			</button>
+
 			<span>{lines.length} lines &middot; {narrationCount} narration</span>
 
 			<span class="flex items-center gap-1.5">
@@ -116,12 +131,15 @@
 				speaker={line.speaker}
 				text={line.text}
 				{furiganaMode}
+				{names}
 				onlookup={(token, lineId) => (selected = { token, lineId })}
 			/>
 		{/each}
 	</div>
 
-	{#if selected}
+	{#if showNames}
+		<NamePanel {names} onchange={(n) => (names = n)} onclose={() => (showNames = false)} />
+	{:else if selected}
 		<DefinitionPanel token={selected.token} onclose={() => (selected = null)} />
 	{/if}
 </div>
