@@ -46,7 +46,7 @@
 					onclick={() => onlookup(token)}
 					onkeydown={(e) => e.key === 'Enter' && onlookup(token)}
 					>{#each token.segments as seg, k (k)}{#if seg.ruby}<ruby
-								>{seg.text}<rt class="text-[0.5em] text-neutral-500">{seg.ruby}</rt></ruby
+								>{seg.text}<rt class="text-[0.6em] text-neutral-400">{seg.ruby}</rt></ruby
 							>{:else}{seg.text}{/if}{/each}</span
 				>{:else}<span class="font-jp">{token.surface}</span>{/if}{/each}{:else}{part.run
 			.text}{/if}{/each}

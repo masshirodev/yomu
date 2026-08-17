@@ -37,10 +37,6 @@
 
 	const narrationCount = $derived(lines.filter((l) => l.kind === 'narration').length);
 
-	function scrollToEnd() {
-		requestAnimationFrame(() => viewport?.scrollTo({ top: viewport.scrollHeight }));
-	}
-
 	onMount(() => {
 		// ~18MB of dictionary. Kicked off here rather than per line so the first
 		// line to arrive is not the one that pays for it.
@@ -63,12 +59,10 @@
 		es.addEventListener('backlog', (e) => {
 			lines = JSON.parse((e as MessageEvent).data);
 			connected = true;
-			scrollToEnd();
 		});
 
 		es.addEventListener('lines', (e) => {
 			lines = [...lines, ...JSON.parse((e as MessageEvent).data)];
-			scrollToEnd();
 		});
 
 		es.onerror = () => (connected = false);
@@ -188,20 +182,27 @@
 	{/if}
 
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<!-- Reversed column, not reversed reading order.
+	     The DOM holds the newest line first and CSS flips it back, so the text
+	     still reads downward while the browser anchors the scroll to the visual
+	     bottom. Opening or closing a panel resizes this container, and without
+	     the anchor every line slides -- which is the jump you get when clicking a
+	     kana. It also makes "stay on the newest line" free, with no scroll
+	     patching after each render. -->
 	<div
 		bind:this={viewport}
-		class="flex-1 space-y-5 overflow-y-auto px-6 py-8"
+		class="flex flex-1 flex-col-reverse justify-end gap-5 overflow-y-auto px-6 py-8"
 		onmouseup={onSelection}
 		ontouchend={onSelection}
 		role="document"
 	>
 		{#if lines.length === 0}
-			<p class="mt-24 text-center font-mono text-sm text-neutral-600">
+			<p class="my-auto text-center font-mono text-sm text-neutral-600">
 				Waiting for text. Start the bridge and advance a line.
 			</p>
 		{/if}
 
-		{#each lines as line (line.id)}
+		{#each [...lines].reverse() as line (line.id)}
 			<Line
 				id={line.id}
 				kind={line.kind}

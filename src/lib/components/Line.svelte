@@ -114,7 +114,7 @@
 					>
 						{#each token.segments as seg, si (si)}
 							{#if seg.ruby && showFurigana}
-								<ruby>{seg.text}<rt class="text-[0.5em] text-neutral-500">{seg.ruby}</rt></ruby>
+								<ruby>{seg.text}<rt class="text-[0.55em] text-neutral-400">{seg.ruby}</rt></ruby>
 							{:else}{seg.text}{/if}
 						{/each}
 					</span>

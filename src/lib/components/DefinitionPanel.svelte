@@ -49,19 +49,19 @@
 	const SENSE_LIMIT = 4;
 </script>
 
-<aside class="max-h-[42vh] overflow-y-auto border-t border-neutral-800 bg-neutral-900/80 px-6 py-4">
+<aside class="max-h-[45vh] overflow-y-auto border-t border-neutral-700 bg-neutral-900 px-6 py-5">
 	<div class="flex items-baseline justify-between">
 		<p class="font-jp text-xl text-neutral-100">
 			{token.surface}
 			{#if token.reading && token.reading !== token.surface}
-				<span class="ml-2 text-base text-neutral-400">{token.reading}</span>
+				<span class="ml-2 text-lg text-neutral-300">{token.reading}</span>
 			{/if}
 			<!-- Romaji is shown whenever romanising adds anything, independent of
 			     whether the reading differs from the surface. A bare kana like へ is
 			     its own reading, and that is precisely the case where the romaji is
 			     the only thing the reader came for. -->
 			{#if romaji && romaji !== token.surface}
-				<span class="ml-2 font-mono text-xs text-neutral-600">{romaji}</span>
+				<span class="ml-2 font-mono text-sm text-neutral-400">{romaji}</span>
 			{/if}
 			{#if token.lemma !== token.surface}
 				<span class="ml-2 font-mono text-xs text-neutral-600">{token.lemma}</span>
@@ -88,7 +88,7 @@
 		     common case for a clicked speaker label. Saying so beats an empty
 		     result that reads like a failure -- the reading and romaji above are
 		     the answer being looked for. -->
-		<p class="mt-2 font-mono text-xs text-neutral-600">
+		<p class="mt-3 font-mono text-xs text-neutral-500">
 			{token.reading
 				? 'No JMdict entry — character names and proper nouns are not in it. The reading above is from the names list.'
 				: `no dictionary entry for ${token.lemma}`}
@@ -96,26 +96,26 @@
 	{:else}
 		{#each entries.slice(0, 3) as entry (entry.id)}
 			<div class="mt-3 border-t border-neutral-800/60 pt-2 first:border-0">
-				<p class="font-jp text-sm text-neutral-400">
+				<p class="font-jp text-base text-neutral-300">
 					{entry.kanji.slice(0, 3).join('、')}
 					{#if entry.kanji.length && entry.kana.length}·{/if}
 					{entry.kana.slice(0, 2).join('、')}
 					{#if entry.common}
-						<span class="ml-1 font-mono text-[10px] text-emerald-600/80">common</span>
+						<span class="ml-1 font-mono text-xs text-emerald-500/80">common</span>
 					{/if}
 				</p>
 
 				<ol class="mt-1 space-y-1">
 					{#each entry.senses.slice(0, SENSE_LIMIT) as sense, i (i)}
-						<li class="text-sm text-neutral-300">
-							<span class="mr-1 font-mono text-[10px] text-neutral-600">
+						<li class="text-base leading-relaxed text-neutral-200">
+							<span class="mr-1 font-mono text-xs text-neutral-500">
 								{sense.pos.slice(0, 2).join(', ')}
 							</span>
 							{sense.gloss.join('; ')}
 						</li>
 					{/each}
 					{#if entry.senses.length > SENSE_LIMIT}
-						<li class="font-mono text-[10px] text-neutral-600">
+						<li class="font-mono text-xs text-neutral-500">
 							+{entry.senses.length - SENSE_LIMIT} more senses
 						</li>
 					{/if}

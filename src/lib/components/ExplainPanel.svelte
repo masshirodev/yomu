@@ -60,9 +60,9 @@
 	}
 </script>
 
-<aside class="max-h-[50vh] overflow-y-auto border-t border-neutral-800 bg-neutral-900/80 px-6 py-4">
+<aside class="max-h-[55vh] overflow-y-auto border-t border-neutral-700 bg-neutral-900 px-6 py-5">
 	<div class="flex items-baseline justify-between gap-4">
-		<p class="font-jp text-base text-neutral-300">
+		<p class="font-jp text-lg leading-relaxed text-neutral-300">
 			{#if span}<span class="text-sky-300">{span}</span>
 				<span class="ml-2 text-xs text-neutral-600">in: {text}</span>
 			{:else}{text}{/if}
@@ -75,10 +75,10 @@
 	{#if failed}
 		<p class="mt-3 font-mono text-xs text-amber-600/80">{failed}</p>
 	{:else if !explanation}
-		<p class="mt-3 font-mono text-xs text-neutral-600">thinking…</p>
+		<p class="mt-4 font-mono text-sm text-neutral-400">thinking…</p>
 	{:else}
 		{#if explanation.grammar.length}
-			<ol class="mt-3 space-y-2">
+			<ol class="mt-4 space-y-3">
 				{#each explanation.grammar as g, i (i)}
 					<li class="text-sm">
 						<span class="font-jp text-sky-400"><MixedText text={g.point} {onlookup} /></span>
@@ -89,24 +89,22 @@
 		{/if}
 
 		{#if explanation.voice}
-			<p class="mt-3 text-sm text-neutral-400">
-				<span class="font-mono text-[10px] tracking-wider text-neutral-600 uppercase">voice</span>
+			<p class="mt-4 text-base leading-relaxed text-neutral-300">
+				<span class="font-mono text-xs tracking-wider text-neutral-500 uppercase">voice</span>
 				<span class="ml-2"><MixedText text={explanation.voice} {onlookup} /></span>
 			</p>
 		{/if}
 
 		{#if explanation.reference}
-			<p class="mt-1 text-sm text-neutral-400">
-				<span class="font-mono text-[10px] tracking-wider text-neutral-600 uppercase"
-					>refers to</span
-				>
+			<p class="mt-2 text-base leading-relaxed text-neutral-300">
+				<span class="font-mono text-xs tracking-wider text-neutral-500 uppercase">refers to</span>
 				<span class="ml-2"><MixedText text={explanation.reference} {onlookup} /></span>
 			</p>
 		{/if}
 
 		<div class="mt-4 border-t border-neutral-800/60 pt-3">
 			{#if showTranslation}
-				<p class="text-sm text-neutral-400">{explanation.translation}</p>
+				<p class="text-base leading-relaxed text-neutral-300">{explanation.translation}</p>
 			{:else}
 				<button
 					class="rounded border border-neutral-800 px-2 py-1 font-mono text-xs text-neutral-500
@@ -115,7 +113,7 @@
 				>
 					show English translation
 				</button>
-				<p class="mt-1 font-mono text-[10px] text-neutral-700">
+				<p class="mt-2 font-mono text-xs text-neutral-500">
 					Deliberately a second click, and logged. Reading a VN through the translation is how this
 					kind of tool quietly stops teaching anything.
 				</p>
