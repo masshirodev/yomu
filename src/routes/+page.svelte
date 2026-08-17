@@ -28,7 +28,9 @@
 	let showNames = $state(false);
 	let showSession = $state(false);
 	let showMining = $state(false);
-	let explaining = $state<{ lineId: number; text: string } | null>(null);
+	let explaining = $state<{ lineId: number; text: string; span: string | null } | null>(null);
+	/** A phrase the reader has selected by dragging across the text. */
+	let phrase = $state<{ lineId: number; text: string; span: string } | null>(null);
 	let session = $state<{ id: number; mode: string; startedAt: number } | null>(null);
 	let stats = $state<SessionStats | null>(null);
 	let viewport = $state<HTMLDivElement | null>(null);
@@ -77,6 +79,35 @@
 			es.close();
 		};
 	});
+
+	/**
+	 * Turn a text selection into a phrase to explain.
+	 *
+	 * Uses the browser's own selection rather than custom drag handling across
+	 * tokens: `rt { user-select: none }` keeps furigana out of the selected text,
+	 * so what comes back is exactly the base characters that were dragged over.
+	 * Single clicks collapse the selection and are untouched, so click-to-define
+	 * still works as before.
+	 */
+	function onSelection() {
+		const sel = window.getSelection();
+		const raw = sel?.toString().trim() ?? '';
+
+		// One character is a click or a slip, not a phrase worth a model call.
+		if (!sel || sel.isCollapsed || raw.length < 2) {
+			phrase = null;
+			return;
+		}
+
+		const node = sel.anchorNode;
+		const el = (node instanceof Element ? node : node?.parentElement)?.closest('[data-line-id]');
+		const id = el ? Number((el as HTMLElement).dataset.lineId) : NaN;
+		const line = lines.find((l) => l.id === id);
+
+		// The selection must sit inside one line and be part of its text; a drag
+		// spanning two lines is not a phrase.
+		phrase = line && line.text.includes(raw) ? { lineId: id, text: line.text, span: raw } : null;
+	}
 
 	async function refreshSession() {
 		try {
@@ -156,7 +187,14 @@
 		</p>
 	{/if}
 
-	<div bind:this={viewport} class="flex-1 space-y-5 overflow-y-auto px-6 py-8">
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<div
+		bind:this={viewport}
+		class="flex-1 space-y-5 overflow-y-auto px-6 py-8"
+		onmouseup={onSelection}
+		ontouchend={onSelection}
+		role="document"
+	>
 		{#if lines.length === 0}
 			<p class="mt-24 text-center font-mono text-sm text-neutral-600">
 				Waiting for text. Start the bridge and advance a line.
@@ -176,12 +214,35 @@
 					explaining = null;
 				}}
 				onexplain={(lineId, text) => {
-					explaining = { lineId, text };
+					explaining = { lineId, text, span: null };
 					selected = null;
 				}}
 			/>
 		{/each}
 	</div>
+
+	{#if phrase && !explaining && !selected}
+		<!-- Offered rather than fired automatically: selecting text is also just
+		     how you read carefully, and a model call on every drag would be both
+		     expensive and startling. -->
+		<div class="flex items-center gap-3 border-t border-neutral-800 bg-neutral-900/80 px-6 py-2">
+			<span class="font-jp text-sm text-sky-300">{phrase.span}</span>
+			<button
+				class="rounded border border-sky-800/60 px-2 py-0.5 font-mono text-xs text-sky-400
+					hover:bg-sky-900/30"
+				onclick={() => {
+					explaining = { lineId: phrase!.lineId, text: phrase!.text, span: phrase!.span };
+					phrase = null;
+				}}
+			>
+				explain this phrase
+			</button>
+			<button
+				class="font-mono text-xs text-neutral-600 hover:text-neutral-400"
+				onclick={() => (phrase = null)}>dismiss</button
+			>
+		</div>
+	{/if}
 
 	{#if explaining}
 		<!-- Kept mounted while a definition is open on top of it: unmounting would
@@ -191,6 +252,7 @@
 			<ExplainPanel
 				lineId={explaining.lineId}
 				text={explaining.text}
+				span={explaining.span}
 				onclose={() => (explaining = null)}
 				onlookup={(token) => (selected = { token, lineId: explaining!.lineId })}
 			/>

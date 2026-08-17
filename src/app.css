@@ -16,3 +16,14 @@ html,
 body {
 	height: 100%;
 }
+
+/* Furigana must not join a text selection.
+
+   Selecting 「ぎりっと強く奥歯」 by dragging would otherwise capture the <rt>
+   readings interleaved with the base text -- おくばぎりっと強く奥歯 and so on --
+   which is unusable as a phrase to look up. Excluding rt from selection is what
+   lets the browser's own selection be the phrase-picking UI, instead of building
+   drag handling across tokens by hand. */
+rt {
+	user-select: none;
+}

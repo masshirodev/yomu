@@ -34,7 +34,12 @@ export const POST: RequestHandler = async ({ request }) => {
 		lines: contextLines(line.session_id)
 	});
 
-	const prompt = buildPrompt(line.text, ctx);
+	// A span must be part of the line it claims to be from, so a caller cannot
+	// smuggle arbitrary text into the prompt through this field.
+	const rawSpan = typeof body?.span === 'string' ? body.span.trim() : '';
+	const span = rawSpan && line.text.includes(rawSpan) ? rawSpan : null;
+
+	const prompt = buildPrompt(line.text, ctx, span);
 	const key = cacheKey(prompt);
 
 	const cached = cachedExplanation(key);

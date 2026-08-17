@@ -117,13 +117,19 @@ const SCHEMA = {
  * The prompt is assembled here rather than in the route so it can be hashed for
  * the cache and tested without a subprocess.
  */
-export function buildPrompt(line: string, ctx: BuiltContext): string {
+export function buildPrompt(line: string, ctx: BuiltContext, span?: string | null): string {
 	const context = renderContext(ctx);
 
 	return [
 		SYSTEM_RULES,
 		context ? `\n# Story context (everything the reader has read)\n\n${context}` : '',
 		`\n# The line to explain\n\n${line}`,
+		// A selected phrase is explained in the context of its whole line, not in
+		// isolation. Meaning in Japanese lives in phrases -- ぎりっと alone has
+		// almost no dictionary presence, while ぎりっと強く奥歯を噛みしめる is
+		// perfectly clear -- so the span narrows the focus without losing the
+		// sentence it sits in.
+		span ? `\n# Focus on this phrase within that line\n\n${span}` : '',
 		`\nFields: "grammar" is the constructions worth explaining here, most important first.`,
 		`"voice" is register or character-voice worth noting, or null.`,
 		`"reference" resolves any pronoun or referent using ONLY the context above, or null if it has not been established.`,

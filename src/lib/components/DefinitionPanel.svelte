@@ -8,6 +8,8 @@
 	type Props = { token: Token; onclose: () => void; onback?: (() => void) | null };
 	let { token, onclose, onback = null }: Props = $props();
 
+	const romaji = $derived(toRomaji(token.reading ?? token.surface));
+
 	let entries = $state<Entry[] | null>(null);
 	let failed = $state<string | null>(null);
 
@@ -53,9 +55,13 @@
 			{token.surface}
 			{#if token.reading && token.reading !== token.surface}
 				<span class="ml-2 text-base text-neutral-400">{token.reading}</span>
-				<!-- Romaji only here, where a reading was already revealed by a click.
-				     Under the line itself it would be read instead of the kana. -->
-				<span class="ml-2 font-mono text-xs text-neutral-600">{toRomaji(token.reading)}</span>
+			{/if}
+			<!-- Romaji is shown whenever romanising adds anything, independent of
+			     whether the reading differs from the surface. A bare kana like へ is
+			     its own reading, and that is precisely the case where the romaji is
+			     the only thing the reader came for. -->
+			{#if romaji && romaji !== token.surface}
+				<span class="ml-2 font-mono text-xs text-neutral-600">{romaji}</span>
 			{/if}
 			{#if token.lemma !== token.surface}
 				<span class="ml-2 font-mono text-xs text-neutral-600">{token.lemma}</span>

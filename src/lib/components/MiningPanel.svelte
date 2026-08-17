@@ -93,8 +93,10 @@
 							{c.surface}
 							{#if c.reading && c.reading !== c.surface}
 								<span class="ml-2 text-sm text-neutral-500">{c.reading}</span>
+							{/if}
+							{#if toRomaji(c.reading ?? c.surface) !== c.surface}
 								<span class="ml-2 font-mono text-[10px] text-neutral-600"
-									>{toRomaji(c.reading)}</span
+									>{toRomaji(c.reading ?? c.surface)}</span
 								>
 							{/if}
 						</p>

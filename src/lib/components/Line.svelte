@@ -74,7 +74,7 @@
 	}
 </script>
 
-<article class="group font-jp">
+<article class="group font-jp" data-line-id={id}>
 	<div class="mb-1 flex items-baseline gap-3">
 		{#if speaker}
 			<button

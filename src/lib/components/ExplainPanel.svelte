@@ -13,10 +13,12 @@
 	type Props = {
 		lineId: number;
 		text: string;
+		/** A phrase within the line to focus on, when one was selected. */
+		span?: string | null;
 		onclose: () => void;
 		onlookup: (token: Token) => void;
 	};
-	let { lineId, text, onclose, onlookup }: Props = $props();
+	let { lineId, text, span = null, onclose, onlookup }: Props = $props();
 
 	let explanation = $state<Explanation | null>(null);
 	let failed = $state<string | null>(null);
@@ -31,7 +33,7 @@
 		fetch('/api/explain', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ lineId })
+			body: JSON.stringify({ lineId, span })
 		})
 			.then(async (r) => {
 				if (!r.ok) throw new Error(await r.text());
@@ -60,7 +62,11 @@
 
 <aside class="max-h-[50vh] overflow-y-auto border-t border-neutral-800 bg-neutral-900/80 px-6 py-4">
 	<div class="flex items-baseline justify-between gap-4">
-		<p class="font-jp text-base text-neutral-300">{text}</p>
+		<p class="font-jp text-base text-neutral-300">
+			{#if span}<span class="text-sky-300">{span}</span>
+				<span class="ml-2 text-xs text-neutral-600">in: {text}</span>
+			{:else}{text}{/if}
+		</p>
 		<button class="font-mono text-xs text-neutral-600 hover:text-neutral-400" onclick={onclose}>
 			close
 		</button>
