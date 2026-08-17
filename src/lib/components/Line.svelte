@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tokenize, type Token } from '$lib/tokenize';
 	import { applyNames, type NameEntry } from '$lib/names';
+	import { furigana } from '$lib/furigana';
 	import { track } from '$lib/telemetry';
 
 	type Props = {
@@ -45,6 +46,27 @@
 		};
 	});
 
+	/**
+	 * The speaker label is a lookup target too.
+	 *
+	 * It is the most frequently repeated name on screen and, until now, the only
+	 * text in the reader you could not get a reading for -- which is backwards,
+	 * because katakana names are exactly the recall gap romaji was added for.
+	 * The curated reading from the names table is used when there is one, so this
+	 * shows さくらばえま / sakurabaema rather than kuromoji's guess.
+	 */
+	function lookupSpeaker(name: string) {
+		const known = names.find((n) => n.surface === name);
+		lookup({
+			surface: name,
+			lemma: name,
+			reading: known?.reading ?? null,
+			pos: '名詞',
+			segments: furigana(name, known?.reading ?? null),
+			lookupable: true
+		});
+	}
+
 	function lookup(token: Token) {
 		if (!token.lookupable) return;
 		track('lookup', id, { lemma: token.lemma, surface: token.surface, pos: token.pos });
@@ -55,7 +77,12 @@
 <article class="group font-jp">
 	<div class="mb-1 flex items-baseline gap-3">
 		{#if speaker}
-			<p class="text-sm font-medium text-sky-400">{speaker}</p>
+			<button
+				class="text-sm font-medium text-sky-400 hover:text-sky-300 hover:underline"
+				onclick={() => lookupSpeaker(speaker)}
+			>
+				{speaker}
+			</button>
 		{/if}
 		<!-- Revealed on hover: an always-visible button per line would turn the
 		     page into a wall of controls and pull the eye off the text. -->

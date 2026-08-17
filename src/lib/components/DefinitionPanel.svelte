@@ -71,8 +71,14 @@
 	{:else if entries === null}
 		<p class="mt-2 font-mono text-xs text-neutral-600">looking up…</p>
 	{:else if entries.length === 0}
+		<!-- Character names and proper nouns are not in JMdict, and that is the
+		     common case for a clicked speaker label. Saying so beats an empty
+		     result that reads like a failure -- the reading and romaji above are
+		     the answer being looked for. -->
 		<p class="mt-2 font-mono text-xs text-neutral-600">
-			no dictionary entry for {token.lemma}
+			{token.reading
+				? 'No JMdict entry — character names and proper nouns are not in it. The reading above is from the names list.'
+				: `no dictionary entry for ${token.lemma}`}
 		</p>
 	{:else}
 		{#each entries.slice(0, 3) as entry (entry.id)}
