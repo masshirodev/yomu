@@ -16,14 +16,23 @@
 	let busy = $state(false);
 	let box = $state<HTMLTextAreaElement | null>(null);
 
+	// Reset only when the line changes.
+	//
+	// Focusing must NOT happen in here. Reading `box` would make this effect
+	// depend on it, and submitting destroys the textarea -- bind:this then sets
+	// box to null, the effect re-runs, and it wipes `submitted` and `guess` a
+	// moment after the verdict arrives. That is the whole answer disappearing
+	// with the input cleared, which is exactly what it did.
 	$effect(() => {
-		// Reset when moving to a different line, and focus so a guess can be typed
-		// without reaching for the mouse mid-sentence.
 		void lineId;
 		guess = '';
 		submitted = null;
 		verdict = null;
 		failed = null;
+	});
+
+	// Separate effect: reads box, writes nothing, so it cannot reset anything.
+	$effect(() => {
 		box?.focus();
 	});
 
