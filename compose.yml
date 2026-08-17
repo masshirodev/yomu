@@ -23,12 +23,36 @@ services:
       # without it the reader works and mining simply reports that it cannot send.
       LATTICE_TOKEN: ${LATTICE_TOKEN:-}
       YOMU_LATTICE_DECK: ${YOMU_LATTICE_DECK:-}
+      # Phase 3 explanations. Provider is a command, not a code path -- this went
+      # through the Anthropic API, Claude Code and OpenCode in one sitting, and
+      # OpenCode won because Lattice already drives it here and it is far cheaper.
+      # ai-session isolates opencode through the XDG vars, not HOME, so point
+      # them at the mounted profile -- auth.json lives under <data>/opencode/.
+      # HOME goes to tmpfs so any stray write outside the profile still lands
+      # somewhere writable instead of failing the whole call.
+      HOME: /tmp/yomu-home
+      XDG_CONFIG_HOME: /home/masshiro/.config/ai/profiles/opencode/config
+      XDG_DATA_HOME: /home/masshiro/.config/ai/profiles/opencode/data
+      XDG_STATE_HOME: /home/masshiro/.config/ai/profiles/opencode/state
+      XDG_CACHE_HOME: /tmp/yomu-cache
+      YOMU_EXPLAIN_BIN: ${YOMU_EXPLAIN_BIN:-/home/masshiro/.opencode/bin/opencode}
+      YOMU_EXPLAIN_MODEL: ${YOMU_EXPLAIN_MODEL:-}
+      YOMU_EXPLAIN_VARIANT: ${YOMU_EXPLAIN_VARIANT:-minimal}
+      YOMU_EXPLAIN_TIMEOUT_MS: ${YOMU_EXPLAIN_TIMEOUT_MS:-120000}
     expose:
       - '3000'
     networks:
       - web
+    # Matches the host user so the mounted CLI state below stays writable.
+    user: '${HOST_UID:-1000}:${HOST_GID:-1000}'
     volumes:
       - data:/app/data
+      # Single-user provider bridge, mirroring lattice: mount only the CLI and
+      # session paths the configured provider needs, never the whole home dir.
+      - ${HOST_AI_HOME:-/home/masshiro}/.opencode:/home/masshiro/.opencode:rw
+      - ${HOST_AI_HOME:-/home/masshiro}/.config/ai/profiles/opencode/config:/home/masshiro/.config/ai/profiles/opencode/config:rw
+      - ${HOST_AI_HOME:-/home/masshiro}/.config/ai/profiles/opencode/data:/home/masshiro/.config/ai/profiles/opencode/data:rw
+      - ${HOST_AI_HOME:-/home/masshiro}/.config/ai/profiles/opencode/state:/home/masshiro/.config/ai/profiles/opencode/state:rw
     healthcheck:
       test:
         [
@@ -40,7 +64,6 @@ services:
       interval: 15s
       timeout: 5s
       retries: 10
-    read_only: true
     tmpfs:
       - /tmp
     security_opt:

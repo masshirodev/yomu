@@ -11,9 +11,10 @@
 		furiganaMode: 'none' | 'narration' | 'all';
 		names: NameEntry[];
 		onlookup: (token: Token, lineId: number) => void;
+		onexplain: (lineId: number, text: string) => void;
 	};
 
-	let { id, kind, speaker, text, furiganaMode, names, onlookup }: Props = $props();
+	let { id, kind, speaker, text, furiganaMode, names, onlookup, onexplain }: Props = $props();
 
 	let tokens = $state<Token[] | null>(null);
 
@@ -51,10 +52,21 @@
 	}
 </script>
 
-<article class="font-jp">
-	{#if speaker}
-		<p class="mb-1 text-sm font-medium text-sky-400">{speaker}</p>
-	{/if}
+<article class="group font-jp">
+	<div class="mb-1 flex items-baseline gap-3">
+		{#if speaker}
+			<p class="text-sm font-medium text-sky-400">{speaker}</p>
+		{/if}
+		<!-- Revealed on hover: an always-visible button per line would turn the
+		     page into a wall of controls and pull the eye off the text. -->
+		<button
+			class="font-mono text-[10px] text-neutral-700 opacity-0 transition group-hover:opacity-100
+				hover:text-sky-500 focus:opacity-100"
+			onclick={() => onexplain(id, text)}
+		>
+			explain
+		</button>
+	</div>
 
 	<p
 		class="text-2xl {showFurigana ? 'leading-[2.6]' : 'leading-loose'} {kind === 'narration'

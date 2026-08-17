@@ -3,6 +3,7 @@
 	import Line from '$lib/components/Line.svelte';
 	import DefinitionPanel from '$lib/components/DefinitionPanel.svelte';
 	import NamePanel from '$lib/components/NamePanel.svelte';
+	import ExplainPanel from '$lib/components/ExplainPanel.svelte';
 	import SessionPanel from '$lib/components/SessionPanel.svelte';
 	import MiningPanel from '$lib/components/MiningPanel.svelte';
 	import { loadTokenizer, type Token } from '$lib/tokenize';
@@ -27,6 +28,7 @@
 	let showNames = $state(false);
 	let showSession = $state(false);
 	let showMining = $state(false);
+	let explaining = $state<{ lineId: number; text: string } | null>(null);
 	let session = $state<{ id: number; mode: string; startedAt: number } | null>(null);
 	let stats = $state<SessionStats | null>(null);
 	let viewport = $state<HTMLDivElement | null>(null);
@@ -169,12 +171,25 @@
 				text={line.text}
 				{furiganaMode}
 				{names}
-				onlookup={(token, lineId) => (selected = { token, lineId })}
+				onlookup={(token, lineId) => {
+					selected = { token, lineId };
+					explaining = null;
+				}}
+				onexplain={(lineId, text) => {
+					explaining = { lineId, text };
+					selected = null;
+				}}
 			/>
 		{/each}
 	</div>
 
-	{#if showMining}
+	{#if explaining}
+		<ExplainPanel
+			lineId={explaining.lineId}
+			text={explaining.text}
+			onclose={() => (explaining = null)}
+		/>
+	{:else if showMining}
 		<MiningPanel onclose={() => (showMining = false)} />
 	{:else if showSession}
 		<SessionPanel {session} {stats} onmode={setMode} onclose={() => (showSession = false)} />

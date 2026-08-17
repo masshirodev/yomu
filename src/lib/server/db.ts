@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { SESSION_IDLE_MS, type AdvanceSample, type LookupSample } from '$lib/stats';
 import type { LookupRecord } from '$lib/mining';
+import type { CharacterFact, ContextLine, StoryDigest } from '$lib/context';
 
 const DB_PATH = process.env.YOMU_DB ?? 'data/yomu.db';
 
@@ -59,6 +60,46 @@ CREATE TABLE IF NOT EXISTS names (
   seen_count INTEGER NOT NULL DEFAULT 0,
   first_seen INTEGER NOT NULL
 );
+
+-- Phase 3 story memory. Every row is stamped with the line it was learned at,
+-- and every read filters on that -- see src/lib/context.ts. A digest is a
+-- compressed summary of everything up to its through_line column; it is never
+-- valid for a reader who has not reached that line, however recent it is.
+CREATE TABLE IF NOT EXISTS story_digests (
+  id           INTEGER PRIMARY KEY,
+  through_line INTEGER NOT NULL,
+  summary      TEXT    NOT NULL,
+  created_at   INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS character_facts (
+  id              INTEGER PRIMARY KEY,
+  name            TEXT NOT NULL,
+  fact            TEXT NOT NULL,
+  kind            TEXT NOT NULL
+                    CHECK (kind IN ('self_reference', 'speech', 'relationship', 'fact')),
+  learned_at_line INTEGER NOT NULL,
+  created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS character_facts_learned ON character_facts(learned_at_line);
+
+-- Explanation cache. Keyed by a hash of the whole prompt -- line plus the story
+-- context as the reader had it -- so a reread costs nothing, while the same line
+-- met at a different point in the story is a different question and gets asked
+-- again. The status column keeps failures rather than dropping them, so a broken
+-- provider shows up as a pattern instead of as one-off errors in the reader.
+CREATE TABLE IF NOT EXISTS explanations (
+  cache_key    TEXT PRIMARY KEY,
+  line_id      INTEGER REFERENCES lines(id),
+  status       TEXT NOT NULL CHECK (status IN ('pending', 'done', 'failed')),
+  prompt       TEXT NOT NULL,
+  result       TEXT,
+  provider     TEXT,
+  error        TEXT,
+  created_at   INTEGER NOT NULL,
+  completed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS explanations_status ON explanations(status, created_at);
 
 -- Mining decisions. A lemma appears here once it has been approved or rejected,
 -- so a word turned down does not keep resurfacing every session and a word
@@ -312,4 +353,90 @@ export function recentLines(sessionId: number, limit = 200): StoredLine[] {
 		)
 		.all(sessionId, limit)
 		.reverse() as StoredLine[];
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: story memory and explanation cache
+// ---------------------------------------------------------------------------
+
+export function storyDigests(): StoryDigest[] {
+	return db
+		.prepare('SELECT through_line AS throughLine, summary FROM story_digests')
+		.all() as StoryDigest[];
+}
+
+export function characterFacts(): CharacterFact[] {
+	return db
+		.prepare(`SELECT name, fact, kind, learned_at_line AS learnedAt FROM character_facts`)
+		.all() as CharacterFact[];
+}
+
+export function addCharacterFact(
+	name: string,
+	fact: string,
+	kind: CharacterFact['kind'],
+	learnedAtLine: number,
+	at = Date.now()
+): void {
+	db.prepare(
+		`INSERT INTO character_facts (name, fact, kind, learned_at_line, created_at)
+		 VALUES (?, ?, ?, ?, ?)`
+	).run(name, fact, kind, learnedAtLine, at);
+}
+
+export function addStoryDigest(throughLine: number, summary: string, at = Date.now()): void {
+	db.prepare('INSERT INTO story_digests (through_line, summary, created_at) VALUES (?, ?, ?)').run(
+		throughLine,
+		summary,
+		at
+	);
+}
+
+/** Lines as the context builder wants them, for one session. */
+export function contextLines(sessionId: number): ContextLine[] {
+	return db
+		.prepare(`SELECT seq, kind, speaker, text FROM lines WHERE session_id = ? ORDER BY seq`)
+		.all(sessionId) as ContextLine[];
+}
+
+export function lineWithSeq(
+	id: number
+): { id: number; seq: number; session_id: number; text: string; speaker: string | null } | null {
+	return (
+		(db.prepare('SELECT id, seq, session_id, text, speaker FROM lines WHERE id = ?').get(id) as {
+			id: number;
+			seq: number;
+			session_id: number;
+			text: string;
+			speaker: string | null;
+		}) ?? null
+	);
+}
+
+export function cachedExplanation(key: string): { status: string; result: string | null } | null {
+	return (
+		(db.prepare('SELECT status, result FROM explanations WHERE cache_key = ?').get(key) as {
+			status: string;
+			result: string | null;
+		}) ?? null
+	);
+}
+
+export function saveExplanation(
+	key: string,
+	lineId: number,
+	prompt: string,
+	result: string | null,
+	provider: string,
+	error: string | null,
+	at = Date.now()
+): void {
+	db.prepare(
+		`INSERT INTO explanations
+		   (cache_key, line_id, status, prompt, result, provider, error, created_at, completed_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(cache_key) DO UPDATE SET
+		   status = excluded.status, result = excluded.result,
+		   error = excluded.error, completed_at = excluded.completed_at`
+	).run(key, lineId, error ? 'failed' : 'done', prompt, result, provider, error, at, at);
 }
