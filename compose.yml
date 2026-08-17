@@ -1,0 +1,51 @@
+name: yomu
+
+services:
+  app:
+    build:
+      context: .
+      target: runtime
+    container_name: yomu-app
+    restart: unless-stopped
+    init: true
+    environment:
+      ORIGIN: https://yomu.masshiro.pro
+      PROTOCOL_HEADER: X-Forwarded-Proto
+      HOST_HEADER: X-Forwarded-Host
+      ADDRESS_HEADER: X-Forwarded-For
+      XFF_DEPTH: '1'
+      # A backlog flush can carry the whole prologue in one event; the largest
+      # seen so far was 478 characters, but skipping can produce far more.
+      BODY_SIZE_LIMIT: 1M
+      # Guards /api/ingest, which bypasses Authentik so the bridge can post.
+      YOMU_INGEST_TOKEN: ${YOMU_INGEST_TOKEN:?set YOMU_INGEST_TOKEN before deploying}
+    expose:
+      - '3000'
+    networks:
+      - web
+    volumes:
+      - data:/app/data
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  data:
+
+networks:
+  web:
+    name: masshiro-web
+    external: true

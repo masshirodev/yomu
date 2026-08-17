@@ -4,6 +4,7 @@ import { parseEvent, type SourceKind } from '$lib/parse';
 import { appendLines, currentSession } from '$lib/server/db';
 import { publish } from '$lib/server/bus';
 import { saveState, stateFor } from '$lib/server/parse-state';
+import { requireIngestToken } from '$lib/server/auth';
 
 const SOURCES: SourceKind[] = ['clipboard', 'cli', 'manual'];
 
@@ -15,6 +16,8 @@ const SOURCES: SourceKind[] = ['clipboard', 'cli', 'manual'];
  * downstream of this endpoint knows how the text was obtained.
  */
 export const POST: RequestHandler = async ({ request }) => {
+	requireIngestToken(request);
+
 	const body = await request.json().catch(() => null);
 	if (!body || typeof body.text !== 'string') error(400, 'expected { text, source?, ts? }');
 

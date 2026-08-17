@@ -75,8 +75,36 @@ On the machine running the game, with Textractor attached and Copy to Clipboard
 enabled on the dialogue thread:
 
 ```sh
+# against the hosted instance
+YOMU_URL=https://yomu.masshiro.pro \
+YOMU_INGEST_TOKEN=<from yomu/.env on the server> \
+  bridge/yomu-send.sh
+
+# or locally
 YOMU_URL=http://localhost:42139 bridge/yomu-send.sh
 ```
+
+## Deployment
+
+Hosted at **https://yomu.masshiro.pro**, behind Caddy and gated by Authentik
+forward-auth like the rest of the homelab.
+
+```sh
+cd ../ansible && ansible-playbook playbooks/deploy.yml -e service=yomu
+```
+
+`/api/ingest` is the one path Caddy lets past Authentik, because the bridge runs
+on the machine playing the game and cannot complete an interactive login. It is
+guarded instead by a bearer token (`YOMU_INGEST_TOKEN`, read from `yomu/.env`),
+checked in `src/lib/server/auth.ts`. In production a missing token makes the
+endpoint refuse rather than accept unauthenticated writes — forgetting a variable
+should not quietly open a write endpoint to the internet.
+
+`/api/stream` and `/api/events` are only ever called by the browser, so they stay
+behind Authentik with the reader itself.
+
+Note that Caddy's `Caddyfile` is **baked into its image**, not bind-mounted, so
+editing it does nothing until caddy is redeployed.
 
 ## Status
 

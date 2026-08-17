@@ -5,7 +5,11 @@
 # clipboard with the host, so Textractor's "Copy to Clipboard" extension is the
 # whole transport out of the Proton prefix.
 #
-#   YOMU_URL=http://localhost:42139 ./yomu-send.sh
+#   YOMU_URL=https://yomu.masshiro.pro YOMU_INGEST_TOKEN=... ./yomu-send.sh
+#
+# The token is required against the hosted instance. /api/ingest bypasses
+# Authentik at the edge -- this script cannot complete an interactive login --
+# so the shared secret is the only thing standing in front of it.
 #
 # $EPOCHREALTIME is read as the first statement in the handler, before any fork.
 # Dwell time is the entire input to the known-word model and every later hop adds
@@ -16,6 +20,7 @@
 set -euo pipefail
 
 export YOMU_URL="${YOMU_URL:-http://localhost:42139}"
+export YOMU_INGEST_TOKEN="${YOMU_INGEST_TOKEN:-}"
 
 if [ -z "${WAYLAND_DISPLAY:-}" ]; then
 	export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -50,10 +55,15 @@ payload = json.dumps({
     \"ts\": int(float(sys.argv[1]) * 1000),
 }).encode()
 
+headers = {\"content-type\": \"application/json\"}
+token = os.environ.get(\"YOMU_INGEST_TOKEN\")
+if token:
+    headers[\"authorization\"] = \"Bearer \" + token
+
 req = urllib.request.Request(
     os.environ[\"YOMU_URL\"] + \"/api/ingest\",
     data=payload,
-    headers={\"content-type\": \"application/json\"},
+    headers=headers,
 )
 try:
     urllib.request.urlopen(req, timeout=5).read()
