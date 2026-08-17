@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Line from '$lib/components/Line.svelte';
+	import DefinitionPanel from '$lib/components/DefinitionPanel.svelte';
 	import { loadTokenizer, type Token } from '$lib/tokenize';
 	import { track } from '$lib/telemetry';
 
@@ -121,25 +122,6 @@
 	</div>
 
 	{#if selected}
-		<aside class="border-t border-neutral-800 bg-neutral-900/60 px-6 py-4">
-			<div class="flex items-baseline justify-between">
-				<p class="font-jp text-xl text-neutral-100">
-					{selected.token.surface}
-					{#if selected.token.reading && selected.token.reading !== selected.token.surface}
-						<span class="ml-2 text-base text-neutral-400">{selected.token.reading}</span>
-					{/if}
-				</p>
-				<button
-					class="font-mono text-xs text-neutral-600 hover:text-neutral-400"
-					onclick={() => (selected = null)}>close</button
-				>
-			</div>
-			<p class="mt-1 font-mono text-xs text-neutral-500">
-				{selected.token.lemma} &middot; {selected.token.pos}
-			</p>
-			<p class="mt-2 font-mono text-xs text-neutral-600">
-				JMdict lookup not wired yet — the click is already being logged.
-			</p>
-		</aside>
+		<DefinitionPanel token={selected.token} onclose={() => (selected = null)} />
 	{/if}
 </div>

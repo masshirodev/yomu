@@ -17,6 +17,13 @@ COPY . .
 # be copied into static/ before the build sweeps static/ into the client bundle.
 RUN yarn sync:dict && yarn build
 
+# JMdict, downloaded and flattened into SQLite at build time so the image is
+# self-contained and a deploy cannot leave the reader without definitions.
+# Baked into the image rather than the data volume: it is derived, identical for
+# every deploy, and rebuilding it is how it gets updated.
+FROM build AS dictionary
+RUN yarn build:dict --out /app/jmdict.db
+
 FROM base AS production-dependencies
 COPY package.json yarn.lock ./
 RUN apt-get update \
@@ -26,9 +33,12 @@ RUN apt-get update \
 
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 YOMU_DB=/app/data/yomu.db
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 \
+	YOMU_DB=/app/data/yomu.db \
+	YOMU_JMDICT=/app/jmdict.db
 COPY --from=production-dependencies /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
+COPY --from=dictionary /app/jmdict.db ./jmdict.db
 COPY package.json ./
 # The line store is the only writeable path; everything else stays read-only.
 RUN mkdir -p /app/data && chown node:node /app/data

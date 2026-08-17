@@ -79,3 +79,29 @@ describe.skipIf(!available)('tokenize against real capture lines', () => {
 		expect(render('鉄格子')).toBe('鉄格子[てつごうし]');
 	});
 });
+
+/**
+ * kuromoji's basic_form is what makes a separate deinflection layer unnecessary:
+ * a conjugated surface already arrives with its dictionary form attached, which
+ * is the key JMdict is indexed by.
+ */
+describe.skipIf(!available)('lemmas are dictionary forms', () => {
+	let analyse: (text: string) => Token[];
+
+	beforeAll(async () => {
+		const tokenizer = await new kuromoji.TokenizerBuilder({ loader: nodeLoader }).build();
+		analyse = (text: string) => toTokens(tokenizer.tokenize(text));
+	}, 120_000);
+
+	const lemmaOf = (text: string, surface: string) =>
+		analyse(text).find((t) => t.surface === surface)?.lemma;
+
+	it('reduces a conjugated verb to the form JMdict is keyed by', () => {
+		// From the capture: 見開かれて -> 見開く, which is the entry that exists.
+		expect(lemmaOf('その眼がみるみる見開かれていく。', '見開か')).toBe('見開く');
+	});
+
+	it('reduces a passive-past chain', () => {
+		expect(lemmaOf('蔑まれ、貶められ、嘲笑される毎日に、', '蔑ま')).toBe('蔑む');
+	});
+});

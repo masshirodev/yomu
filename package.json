@@ -13,7 +13,8 @@
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"test": "vitest run",
-		"sync:dict": "node scripts/sync-dict.js"
+		"sync:dict": "node scripts/sync-dict.js",
+		"build:dict": "node --max-old-space-size=2048 scripts/build-dict.js"
 	},
 	"dependencies": {
 		"@patdx/kuromoji": "^1.0.4",
