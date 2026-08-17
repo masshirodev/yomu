@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { SESSION_IDLE_MS, type AdvanceSample, type LookupSample } from '$lib/stats';
 
 const DB_PATH = process.env.YOMU_DB ?? 'data/yomu.db';
 
@@ -64,11 +65,78 @@ export function openSession(now = Date.now()): number {
 	return Number(r.lastInsertRowid);
 }
 
+/**
+ * The open session, rolling over to a new one after a long enough gap.
+ *
+ * Without this a session never ends, so "this session" eventually spans weeks
+ * and every derived statistic becomes an average over unrelated evenings.
+ */
 export function currentSession(now = Date.now()): number {
 	const row = db
-		.prepare('SELECT id FROM sessions WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1')
-		.get() as { id: number } | undefined;
-	return row?.id ?? openSession(now);
+		.prepare(
+			`SELECT s.id AS id,
+			        COALESCE(MAX(l.received_at), s.started_at) AS last_at
+			 FROM sessions s
+			 LEFT JOIN lines l ON l.session_id = s.id
+			 WHERE s.ended_at IS NULL
+			 GROUP BY s.id
+			 ORDER BY s.id DESC
+			 LIMIT 1`
+		)
+		.get() as { id: number; last_at: number } | undefined;
+
+	if (!row) return openSession(now);
+
+	if (now - row.last_at > SESSION_IDLE_MS) {
+		db.prepare('UPDATE sessions SET ended_at = ? WHERE id = ?').run(row.last_at, row.id);
+		return openSession(now);
+	}
+
+	return row.id;
+}
+
+export function setSessionMode(sessionId: number, mode: 'reading' | 'skimming' | 'unknown'): void {
+	db.prepare('UPDATE sessions SET mode = ? WHERE id = ?').run(mode, sessionId);
+}
+
+/**
+ * Dwell comes from `lines.received_at`, which is the clipboard timestamp taken
+ * on the machine running the game -- the moment the line actually appeared.
+ * That is a better clock than anything the browser could report, and it keeps
+ * working when the reader is not open. Deliberately the only source of truth
+ * for timing.
+ */
+export function sessionSamples(sessionId: number): {
+	advances: AdvanceSample[];
+	lookups: LookupSample[];
+} {
+	const advances = db
+		.prepare('SELECT received_at AS at, LENGTH(text) AS length FROM lines WHERE session_id = ?')
+		.all(sessionId) as AdvanceSample[];
+
+	const lookups = (
+		db
+			.prepare("SELECT payload, at FROM events WHERE session_id = ? AND type = 'lookup'")
+			.all(sessionId) as { payload: string | null; at: number }[]
+	).flatMap((r) => {
+		if (!r.payload) return [];
+		try {
+			const lemma = JSON.parse(r.payload).lemma;
+			return typeof lemma === 'string' ? [{ lemma, at: r.at }] : [];
+		} catch {
+			return [];
+		}
+	});
+
+	return { advances, lookups };
+}
+
+export function sessionInfo(sessionId: number): { id: number; mode: string; started_at: number } {
+	return db.prepare('SELECT id, mode, started_at FROM sessions WHERE id = ?').get(sessionId) as {
+		id: number;
+		mode: string;
+		started_at: number;
+	};
 }
 
 export type StoredLine = {

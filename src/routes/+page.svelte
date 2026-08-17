@@ -3,8 +3,9 @@
 	import Line from '$lib/components/Line.svelte';
 	import DefinitionPanel from '$lib/components/DefinitionPanel.svelte';
 	import NamePanel from '$lib/components/NamePanel.svelte';
+	import SessionPanel from '$lib/components/SessionPanel.svelte';
 	import { loadTokenizer, type Token } from '$lib/tokenize';
-	import { track } from '$lib/telemetry';
+	import type { SessionStats } from '$lib/stats';
 
 	type StoredLine = {
 		id: number;
@@ -23,6 +24,9 @@
 	let selected = $state<{ token: Token; lineId: number } | null>(null);
 	let names = $state<{ surface: string; reading: string | null; seen_count: number }[]>([]);
 	let showNames = $state(false);
+	let showSession = $state(false);
+	let session = $state<{ id: number; mode: string; startedAt: number } | null>(null);
+	let stats = $state<SessionStats | null>(null);
 	let viewport = $state<HTMLDivElement | null>(null);
 
 	const narrationCount = $derived(lines.filter((l) => l.kind === 'narration').length);
@@ -38,6 +42,11 @@
 			.then(() => (dictReady = true))
 			.catch((e) => (dictError = String(e)));
 
+		refreshSession();
+		// Cheap, and only while the panel is closed does it not matter -- the point
+		// is that the numbers are never stale enough to mislead.
+		const poll = setInterval(refreshSession, 60_000);
+
 		fetch('/api/names')
 			.then((r) => r.json())
 			.then((d) => (names = d.names))
@@ -52,19 +61,37 @@
 		});
 
 		es.addEventListener('lines', (e) => {
-			const incoming: StoredLine[] = JSON.parse((e as MessageEvent).data);
-			lines = [...lines, ...incoming];
-			// Advance is the dwell clock's tick. Without it there is no way to tell
-			// eight seconds of reading from eight seconds of staring out a window.
-			for (const l of incoming) track('advance', l.id, { kind: l.kind, length: l.text.length });
+			lines = [...lines, ...JSON.parse((e as MessageEvent).data)];
 			scrollToEnd();
 		});
 
 		es.onerror = () => (connected = false);
 		es.onopen = () => (connected = true);
 
-		return () => es.close();
+		return () => {
+			clearInterval(poll);
+			es.close();
+		};
 	});
+
+	async function refreshSession() {
+		try {
+			const d = await (await fetch('/api/session')).json();
+			session = d.session;
+			stats = d.stats;
+		} catch {
+			// The reader must keep working when telemetry does not.
+		}
+	}
+
+	async function setMode(mode: string) {
+		await fetch('/api/session', {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ mode })
+		}).catch(() => {});
+		refreshSession();
+	}
 
 	const MODES = ['none', 'narration', 'all'] as const;
 </script>
@@ -96,6 +123,10 @@
 				onclick={() => (showNames = !showNames)}
 			>
 				names{names.some((n) => !n.reading) ? ` (${names.filter((n) => !n.reading).length})` : ''}
+			</button>
+
+			<button class="hover:text-neutral-400" onclick={() => (showSession = !showSession)}>
+				session
 			</button>
 
 			<span>{lines.length} lines &middot; {narrationCount} narration</span>
@@ -137,7 +168,9 @@
 		{/each}
 	</div>
 
-	{#if showNames}
+	{#if showSession}
+		<SessionPanel {session} {stats} onmode={setMode} onclose={() => (showSession = false)} />
+	{:else if showNames}
 		<NamePanel {names} onchange={(n) => (names = n)} onclose={() => (showNames = false)} />
 	{:else if selected}
 		<DefinitionPanel token={selected.token} onclose={() => (selected = null)} />

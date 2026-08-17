@@ -10,7 +10,7 @@ import { currentSession, recordEvent } from '$lib/server/db';
  * instrumentation is permanently lost to the known-word model. It gets written
  * from the first day the reader works, months before anything consumes it.
  */
-const TYPES = new Set(['lookup', 'explain', 'reveal', 'advance', 'dwell']);
+const TYPES = new Set(['lookup', 'explain', 'reveal']);
 
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json().catch(() => null);
