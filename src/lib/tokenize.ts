@@ -24,18 +24,34 @@ export type Token = {
 
 const DICT_PATH = '/dict/';
 
+const GZIP_MAGIC = [0x1f, 0x8b];
+
 /**
- * kuromoji asks for `foo.dat.gz`. Rather than rely on the server negotiating
- * Content-Encoding correctly for pre-decompressed files, fetch the gzip as-is
- * and inflate it here -- DecompressionStream is native, and this way the dict
- * works from any static host with no configuration at all.
+ * kuromoji asks for `foo.dat.gz`, and whether those bytes arrive still
+ * compressed depends on who is serving them.
+ *
+ * adapter-node serves static files through sirv, which sees the `.gz`
+ * extension and sets `Content-Encoding: gzip`, so fetch transparently inflates
+ * and hands back plain data. Vite's dev server does not. Decompressing
+ * unconditionally therefore works in dev and fails in production with an opaque
+ * AbortError, which is exactly how this was found.
+ *
+ * So sniff the gzip magic number instead of trusting either the extension or
+ * the server. It costs one byte comparison and survives any host.
  */
+export async function maybeGunzip(raw: ArrayBuffer): Promise<ArrayBufferLike> {
+	const head = new Uint8Array(raw, 0, Math.min(2, raw.byteLength));
+	if (head[0] !== GZIP_MAGIC[0] || head[1] !== GZIP_MAGIC[1]) return raw;
+
+	const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream('gzip'));
+	return await new Response(stream).arrayBuffer();
+}
+
 const loader: kuromoji.LoaderConfig = {
 	async loadArrayBuffer(url: string): Promise<ArrayBufferLike> {
 		const res = await fetch(DICT_PATH + url);
-		if (!res.ok || !res.body) throw new Error(`dictionary fetch failed: ${url} (${res.status})`);
-		const inflated = res.body.pipeThrough(new DecompressionStream('gzip'));
-		return await new Response(inflated).arrayBuffer();
+		if (!res.ok) throw new Error(`dictionary fetch failed: ${url} (${res.status})`);
+		return maybeGunzip(await res.arrayBuffer());
 	}
 };
 
