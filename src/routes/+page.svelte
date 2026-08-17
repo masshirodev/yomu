@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import Line from '$lib/components/Line.svelte';
+	import { loadTokenizer, type Token } from '$lib/tokenize';
+	import { track } from '$lib/telemetry';
 
-	type Line = {
+	type StoredLine = {
 		id: number;
 		seq: number;
 		kind: 'dialogue' | 'narration';
@@ -10,20 +13,27 @@
 		received_at: number;
 	};
 
-	let lines = $state<Line[]>([]);
+	let lines = $state<StoredLine[]>([]);
 	let connected = $state(false);
+	let dictReady = $state(false);
+	let dictError = $state<string | null>(null);
+	let furiganaMode = $state<'none' | 'narration' | 'all'>('narration');
+	let selected = $state<{ token: Token; lineId: number } | null>(null);
 	let viewport = $state<HTMLDivElement | null>(null);
 
-	// Narration is the register with no listening scaffold behind it, so it is the
-	// one that gets the visual weight. Dialogue is where mash is already strong.
 	const narrationCount = $derived(lines.filter((l) => l.kind === 'narration').length);
 
 	function scrollToEnd() {
-		// Wait a frame so the new node is laid out before measuring.
 		requestAnimationFrame(() => viewport?.scrollTo({ top: viewport.scrollHeight }));
 	}
 
 	onMount(() => {
+		// ~18MB of dictionary. Kicked off here rather than per line so the first
+		// line to arrive is not the one that pays for it.
+		loadTokenizer()
+			.then(() => (dictReady = true))
+			.catch((e) => (dictError = String(e)));
+
 		const es = new EventSource('/api/stream');
 
 		es.addEventListener('backlog', (e) => {
@@ -33,7 +43,11 @@
 		});
 
 		es.addEventListener('lines', (e) => {
-			lines = [...lines, ...JSON.parse((e as MessageEvent).data)];
+			const incoming: StoredLine[] = JSON.parse((e as MessageEvent).data);
+			lines = [...lines, ...incoming];
+			// Advance is the dwell clock's tick. Without it there is no way to tell
+			// eight seconds of reading from eight seconds of staring out a window.
+			for (const l of incoming) track('advance', l.id, { kind: l.kind, length: l.text.length });
 			scrollToEnd();
 		});
 
@@ -42,6 +56,8 @@
 
 		return () => es.close();
 	});
+
+	const MODES = ['none', 'narration', 'all'] as const;
 </script>
 
 <svelte:head>
@@ -51,8 +67,23 @@
 <div class="mx-auto flex h-screen max-w-3xl flex-col">
 	<header class="flex items-center justify-between border-b border-neutral-800 px-6 py-3">
 		<h1 class="font-mono text-sm tracking-widest text-neutral-500 uppercase">yomu</h1>
+
 		<div class="flex items-center gap-4 font-mono text-xs text-neutral-600">
+			<div class="flex overflow-hidden rounded border border-neutral-800">
+				{#each MODES as mode (mode)}
+					<button
+						class="px-2 py-0.5 {furiganaMode === mode
+							? 'bg-neutral-800 text-neutral-200'
+							: 'hover:text-neutral-400'}"
+						onclick={() => (furiganaMode = mode)}
+					>
+						{mode}
+					</button>
+				{/each}
+			</div>
+
 			<span>{lines.length} lines &middot; {narrationCount} narration</span>
+
 			<span class="flex items-center gap-1.5">
 				<span
 					class="inline-block h-1.5 w-1.5 rounded-full {connected
@@ -64,6 +95,12 @@
 		</div>
 	</header>
 
+	{#if !dictReady}
+		<p class="border-b border-neutral-900 px-6 py-2 font-mono text-xs text-amber-600/80">
+			{dictError ? `dictionary failed: ${dictError}` : 'loading dictionary…'}
+		</p>
+	{/if}
+
 	<div bind:this={viewport} class="flex-1 space-y-5 overflow-y-auto px-6 py-8">
 		{#if lines.length === 0}
 			<p class="mt-24 text-center font-mono text-sm text-neutral-600">
@@ -72,18 +109,37 @@
 		{/if}
 
 		{#each lines as line (line.id)}
-			<article class="font-jp">
-				{#if line.speaker}
-					<p class="mb-1 text-sm font-medium text-sky-400">{line.speaker}</p>
-				{/if}
-				<p
-					class="text-2xl leading-loose {line.kind === 'narration'
-						? 'text-neutral-300'
-						: 'text-neutral-100'}"
-				>
-					{line.text}
-				</p>
-			</article>
+			<Line
+				id={line.id}
+				kind={line.kind}
+				speaker={line.speaker}
+				text={line.text}
+				{furiganaMode}
+				onlookup={(token, lineId) => (selected = { token, lineId })}
+			/>
 		{/each}
 	</div>
+
+	{#if selected}
+		<aside class="border-t border-neutral-800 bg-neutral-900/60 px-6 py-4">
+			<div class="flex items-baseline justify-between">
+				<p class="font-jp text-xl text-neutral-100">
+					{selected.token.surface}
+					{#if selected.token.reading && selected.token.reading !== selected.token.surface}
+						<span class="ml-2 text-base text-neutral-400">{selected.token.reading}</span>
+					{/if}
+				</p>
+				<button
+					class="font-mono text-xs text-neutral-600 hover:text-neutral-400"
+					onclick={() => (selected = null)}>close</button
+				>
+			</div>
+			<p class="mt-1 font-mono text-xs text-neutral-500">
+				{selected.token.lemma} &middot; {selected.token.pos}
+			</p>
+			<p class="mt-2 font-mono text-xs text-neutral-600">
+				JMdict lookup not wired yet — the click is already being logged.
+			</p>
+		</aside>
+	{/if}
 </div>

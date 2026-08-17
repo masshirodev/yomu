@@ -24,3 +24,6 @@ vite.config.ts.timestamp-*
 
 # Runtime state: SQLite line store and telemetry.
 /data
+
+# Kuromoji dictionary, ~18MB, synced from node_modules by `yarn sync:dict`.
+/static/dict

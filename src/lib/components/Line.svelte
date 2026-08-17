@@ -1,0 +1,80 @@
+<script lang="ts">
+	import { tokenize, type Token } from '$lib/tokenize';
+	import { track } from '$lib/telemetry';
+
+	type Props = {
+		id: number;
+		kind: 'dialogue' | 'narration';
+		speaker: string | null;
+		text: string;
+		furiganaMode: 'none' | 'narration' | 'all';
+		onlookup: (token: Token, lineId: number) => void;
+	};
+
+	let { id, kind, speaker, text, furiganaMode, onlookup }: Props = $props();
+
+	let tokens = $state<Token[] | null>(null);
+
+	// Narration is the register with no listening scaffold behind it -- anime is
+	// overwhelmingly dialogue -- so it gets readings by default while dialogue
+	// stays clean. A line you can already hear does not need the help.
+	const showFurigana = $derived(
+		furiganaMode === 'all' || (furiganaMode === 'narration' && kind === 'narration')
+	);
+
+	$effect(() => {
+		let cancelled = false;
+		tokenize(text)
+			.then((t) => {
+				if (!cancelled) tokens = t;
+			})
+			.catch(() => {
+				// Fall back to unanalysed text rather than showing nothing. A line you
+				// cannot click is still a line you can read.
+				if (!cancelled) tokens = null;
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	function lookup(token: Token) {
+		if (!token.lookupable) return;
+		track('lookup', id, { lemma: token.lemma, surface: token.surface, pos: token.pos });
+		onlookup(token, id);
+	}
+</script>
+
+<article class="font-jp">
+	{#if speaker}
+		<p class="mb-1 text-sm font-medium text-sky-400">{speaker}</p>
+	{/if}
+
+	<p
+		class="text-2xl {showFurigana ? 'leading-[2.6]' : 'leading-loose'} {kind === 'narration'
+			? 'text-neutral-300'
+			: 'text-neutral-100'}"
+	>
+		{#if tokens}
+			{#each tokens as token, i (i)}
+				{#if token.lookupable}
+					<!-- A span rather than a button: there are dozens per line, and button
+					     semantics would turn the page into a tab-stop minefield. -->
+					<span
+						role="button"
+						tabindex="-1"
+						class="cursor-pointer rounded-sm hover:bg-sky-500/20"
+						onclick={() => lookup(token)}
+						onkeydown={(e) => e.key === 'Enter' && lookup(token)}
+					>
+						{#each token.segments as seg, si (si)}
+							{#if seg.ruby && showFurigana}
+								<ruby>{seg.text}<rt class="text-[0.5em] text-neutral-500">{seg.ruby}</rt></ruby>
+							{:else}{seg.text}{/if}
+						{/each}
+					</span>
+				{:else}{token.surface}{/if}
+			{/each}
+		{:else}{text}{/if}
+	</p>
+</article>

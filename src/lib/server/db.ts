@@ -104,6 +104,21 @@ export function appendLines(
 	return stored;
 }
 
+const insertEvent = db.prepare(
+	`INSERT INTO events (session_id, line_id, type, payload, at)
+	 VALUES (?, ?, ?, ?, ?)`
+);
+
+export function recordEvent(
+	sessionId: number,
+	lineId: number | null,
+	type: string,
+	payload: unknown,
+	at: number
+): void {
+	insertEvent.run(sessionId, lineId, type, payload === null ? null : JSON.stringify(payload), at);
+}
+
 export function recentLines(sessionId: number, limit = 200): StoredLine[] {
 	return db
 		.prepare(
