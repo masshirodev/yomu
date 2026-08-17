@@ -5,8 +5,8 @@
 	type Sense = { pos: string[]; misc: string[]; info: string[]; gloss: string[] };
 	type Entry = { id: string; kanji: string[]; kana: string[]; senses: Sense[]; common: boolean };
 
-	type Props = { token: Token; onclose: () => void };
-	let { token, onclose }: Props = $props();
+	type Props = { token: Token; onclose: () => void; onback?: (() => void) | null };
+	let { token, onclose, onback = null }: Props = $props();
 
 	let entries = $state<Entry[] | null>(null);
 	let failed = $state<string | null>(null);
@@ -61,9 +61,16 @@
 				<span class="ml-2 font-mono text-xs text-neutral-600">{token.lemma}</span>
 			{/if}
 		</p>
-		<button class="font-mono text-xs text-neutral-600 hover:text-neutral-400" onclick={onclose}>
-			close
-		</button>
+		<div class="flex shrink-0 gap-3 font-mono text-xs">
+			{#if onback}
+				<!-- Returns to the explanation this word was clicked from. The panel
+				     behind stays mounted, so nothing is re-fetched or re-generated. -->
+				<button class="text-sky-500/80 hover:text-sky-400" onclick={onback}>
+					← back to explanation
+				</button>
+			{/if}
+			<button class="text-neutral-600 hover:text-neutral-400" onclick={onclose}>close</button>
+		</div>
 	</div>
 
 	{#if failed}

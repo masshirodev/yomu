@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { track } from '$lib/telemetry';
+	import MixedText from './MixedText.svelte';
+	import type { Token } from '$lib/tokenize';
 
 	type Explanation = {
 		grammar: { point: string; explanation: string }[];
@@ -8,8 +10,13 @@
 		translation: string;
 	};
 
-	type Props = { lineId: number; text: string; onclose: () => void };
-	let { lineId, text, onclose }: Props = $props();
+	type Props = {
+		lineId: number;
+		text: string;
+		onclose: () => void;
+		onlookup: (token: Token) => void;
+	};
+	let { lineId, text, onclose, onlookup }: Props = $props();
 
 	let explanation = $state<Explanation | null>(null);
 	let failed = $state<string | null>(null);
@@ -68,8 +75,8 @@
 			<ol class="mt-3 space-y-2">
 				{#each explanation.grammar as g, i (i)}
 					<li class="text-sm">
-						<span class="font-jp text-sky-400">{g.point}</span>
-						<span class="ml-2 text-neutral-300">{g.explanation}</span>
+						<span class="font-jp text-sky-400"><MixedText text={g.point} {onlookup} /></span>
+						<span class="ml-2 text-neutral-300"><MixedText text={g.explanation} {onlookup} /></span>
 					</li>
 				{/each}
 			</ol>
@@ -78,7 +85,7 @@
 		{#if explanation.voice}
 			<p class="mt-3 text-sm text-neutral-400">
 				<span class="font-mono text-[10px] tracking-wider text-neutral-600 uppercase">voice</span>
-				<span class="ml-2">{explanation.voice}</span>
+				<span class="ml-2"><MixedText text={explanation.voice} {onlookup} /></span>
 			</p>
 		{/if}
 
@@ -87,7 +94,7 @@
 				<span class="font-mono text-[10px] tracking-wider text-neutral-600 uppercase"
 					>refers to</span
 				>
-				<span class="ml-2">{explanation.reference}</span>
+				<span class="ml-2"><MixedText text={explanation.reference} {onlookup} /></span>
 			</p>
 		{/if}
 

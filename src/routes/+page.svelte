@@ -184,10 +184,27 @@
 	</div>
 
 	{#if explaining}
-		<ExplainPanel
-			lineId={explaining.lineId}
-			text={explaining.text}
-			onclose={() => (explaining = null)}
+		<!-- Kept mounted while a definition is open on top of it: unmounting would
+		     re-run the fetch and flash "thinking…" again for an answer already in
+		     hand. Hidden rather than removed, so going back is instant. -->
+		<div class:hidden={selected !== null}>
+			<ExplainPanel
+				lineId={explaining.lineId}
+				text={explaining.text}
+				onclose={() => (explaining = null)}
+				onlookup={(token) => (selected = { token, lineId: explaining!.lineId })}
+			/>
+		</div>
+	{/if}
+
+	{#if selected}
+		<DefinitionPanel
+			token={selected.token}
+			onback={explaining ? () => (selected = null) : null}
+			onclose={() => {
+				selected = null;
+				explaining = null;
+			}}
 		/>
 	{:else if showMining}
 		<MiningPanel onclose={() => (showMining = false)} />
@@ -195,7 +212,5 @@
 		<SessionPanel {session} {stats} onmode={setMode} onclose={() => (showSession = false)} />
 	{:else if showNames}
 		<NamePanel {names} onchange={(n) => (names = n)} onclose={() => (showNames = false)} />
-	{:else if selected}
-		<DefinitionPanel token={selected.token} onclose={() => (selected = null)} />
 	{/if}
 </div>
