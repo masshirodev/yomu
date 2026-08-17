@@ -75,8 +75,8 @@ On the machine running the game, with Textractor attached and Copy to Clipboard
 enabled on the dialogue thread:
 
 ```sh
-# against the hosted instance
-YOMU_URL=https://yomu.masshiro.pro \
+# against the hosted instance, over Tailscale
+YOMU_URL=http://100.127.94.72:42139 \
 YOMU_INGEST_TOKEN=<from yomu/.env on the server> \
   bridge/yomu-send.sh
 
@@ -106,9 +106,31 @@ behind Authentik with the reader itself.
 Note that Caddy's `Caddyfile` is **baked into its image**, not bind-mounted, so
 editing it does nothing until caddy is redeployed.
 
+### Reaching it from home
+
+The ISP blocks the VPS's public address from the machine that plays the game, so
+`https://yomu.masshiro.pro` times out there even when the service is healthy.
+yomu is therefore also published on the **Tailscale interface only** —
+`100.127.94.72:42139`, configurable via `YOMU_BIND_ADDR`/`YOMU_BIND_PORT`. Never
+bind it to a wildcard address: the tailnet binding is the only thing keeping
+that port off the public internet.
+
+That route bypasses Caddy and therefore Authentik. It is an acceptable trade on
+a private single-owner tailnet, and `/api/ingest` still requires its bearer
+token — but it is a real trade. The public hostname remains the way in from
+anywhere else, and stays gated.
+
 ## Status
 
-Phase 0 (hook verification) is complete. The hook is clean and needs no cleanup
-layer; a separate speaker-name thread exists (`TMPro_set_text`). Phase 1 is the
-reader, in progress. Full plan and phase breakdown live in the Lattice project
-`yomu` and its board.
+Phases 0-4 are done and deployed: the hook is verified and needs no cleanup
+layer, a separate speaker-name thread exists (`TMPro_set_text`), and the reader
+tokenises in-browser with okurigana-aware furigana, JMdict definitions,
+merged character names, friction telemetry, spoiler-safe explanations, and
+mining into Lattice.
+
+Still open: the summariser that writes story digests and character facts (the
+tables, filter and rendering exist and are tested, but nothing populates them
+yet, so explanations currently get the recent-lines window only), and Phase 5's
+known-word model, which needs weeks of real reading before it is worth building.
+
+Full plan and phase breakdown live in the Lattice project `yomu` and its board.

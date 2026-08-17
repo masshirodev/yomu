@@ -5,11 +5,17 @@
 # clipboard with the host, so Textractor's "Copy to Clipboard" extension is the
 # whole transport out of the Proton prefix.
 #
-#   YOMU_URL=https://yomu.masshiro.pro YOMU_INGEST_TOKEN=... ./yomu-send.sh
+#   YOMU_URL=http://100.127.94.72:42139 YOMU_INGEST_TOKEN=... ./yomu-send.sh
 #
-# The token is required against the hosted instance. /api/ingest bypasses
+# Use the TAILSCALE address, not yomu.masshiro.pro: the ISP here blocks the
+# VPS's public address from home, so the public route times out even though the
+# service is healthy. The tailnet does not depend on the ISP and is a good deal
+# faster anyway (~70ms vs a round trip through Caddy).
+#
+# The token is required either way. Over the public route /api/ingest bypasses
 # Authentik at the edge -- this script cannot complete an interactive login --
-# so the shared secret is the only thing standing in front of it.
+# and over the tailnet nothing else is in front of it at all, so the shared
+# secret is the only guard in both cases.
 #
 # $EPOCHREALTIME is read as the first statement in the handler, before any fork.
 # Dwell time is the entire input to the known-word model and every later hop adds

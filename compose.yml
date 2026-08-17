@@ -41,6 +41,17 @@ services:
       YOMU_EXPLAIN_TIMEOUT_MS: ${YOMU_EXPLAIN_TIMEOUT_MS:-120000}
     expose:
       - '3000'
+    ports:
+      # Published on the Tailscale interface only -- never 0.0.0.0. The ISP
+      # blocks the VPS's public address from home, so the clipboard bridge
+      # cannot reach yomu.masshiro.pro; the tailnet is a route that does not
+      # depend on the ISP. Binding to the tailnet IP rather than a wildcard is
+      # what keeps this off the public internet.
+      #
+      # Note this path bypasses Caddy and therefore Authentik. Acceptable because
+      # the tailnet is a private, single-owner network and /api/ingest still
+      # requires its bearer token -- but it is a real trade, not a free one.
+      - '${YOMU_BIND_ADDR:-100.127.94.72}:${YOMU_BIND_PORT:-42139}:3000'
     networks:
       - web
     # Matches the host user so the mounted CLI state below stays writable.
