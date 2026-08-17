@@ -19,6 +19,10 @@ services:
       BODY_SIZE_LIMIT: 1M
       # Guards /api/ingest, which bypasses Authentik so the bridge can post.
       YOMU_INGEST_TOKEN: ${YOMU_INGEST_TOKEN:?set YOMU_INGEST_TOKEN before deploying}
+      # Mined cards are pushed to Lattice, which already owns the SRS. Optional:
+      # without it the reader works and mining simply reports that it cannot send.
+      LATTICE_TOKEN: ${LATTICE_TOKEN:-}
+      YOMU_LATTICE_DECK: ${YOMU_LATTICE_DECK:-}
     expose:
       - '3000'
     networks:

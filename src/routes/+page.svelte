@@ -4,6 +4,7 @@
 	import DefinitionPanel from '$lib/components/DefinitionPanel.svelte';
 	import NamePanel from '$lib/components/NamePanel.svelte';
 	import SessionPanel from '$lib/components/SessionPanel.svelte';
+	import MiningPanel from '$lib/components/MiningPanel.svelte';
 	import { loadTokenizer, type Token } from '$lib/tokenize';
 	import type { SessionStats } from '$lib/stats';
 
@@ -25,6 +26,7 @@
 	let names = $state<{ surface: string; reading: string | null; seen_count: number }[]>([]);
 	let showNames = $state(false);
 	let showSession = $state(false);
+	let showMining = $state(false);
 	let session = $state<{ id: number; mode: string; startedAt: number } | null>(null);
 	let stats = $state<SessionStats | null>(null);
 	let viewport = $state<HTMLDivElement | null>(null);
@@ -125,6 +127,10 @@
 				names{names.some((n) => !n.reading) ? ` (${names.filter((n) => !n.reading).length})` : ''}
 			</button>
 
+			<button class="hover:text-neutral-400" onclick={() => (showMining = !showMining)}>
+				mine
+			</button>
+
 			<button class="hover:text-neutral-400" onclick={() => (showSession = !showSession)}>
 				session
 			</button>
@@ -168,7 +174,9 @@
 		{/each}
 	</div>
 
-	{#if showSession}
+	{#if showMining}
+		<MiningPanel onclose={() => (showMining = false)} />
+	{:else if showSession}
 		<SessionPanel {session} {stats} onmode={setMode} onclose={() => (showSession = false)} />
 	{:else if showNames}
 		<NamePanel {names} onchange={(n) => (names = n)} onclose={() => (showNames = false)} />

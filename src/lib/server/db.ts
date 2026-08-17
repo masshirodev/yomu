@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { SESSION_IDLE_MS, type AdvanceSample, type LookupSample } from '$lib/stats';
+import type { LookupRecord } from '$lib/mining';
 
 const DB_PATH = process.env.YOMU_DB ?? 'data/yomu.db';
 
@@ -57,6 +58,16 @@ CREATE TABLE IF NOT EXISTS names (
   reading    TEXT,
   seen_count INTEGER NOT NULL DEFAULT 0,
   first_seen INTEGER NOT NULL
+);
+
+-- Mining decisions. A lemma appears here once it has been approved or rejected,
+-- so a word turned down does not keep resurfacing every session and a word
+-- already mined is never offered twice.
+CREATE TABLE IF NOT EXISTS mining (
+  lemma      TEXT PRIMARY KEY,
+  status     TEXT NOT NULL CHECK (status IN ('approved', 'rejected')),
+  decided_at INTEGER NOT NULL,
+  note_id    TEXT
 );
 `);
 
@@ -129,6 +140,77 @@ export function sessionSamples(sessionId: number): {
 	});
 
 	return { advances, lookups };
+}
+
+/**
+ * Every lookup ever recorded, for candidate ranking.
+ *
+ * Deliberately not limited to the current session: a word met again weeks later
+ * is the strongest evidence there is that it never stuck.
+ */
+export function allLookups(): LookupRecord[] {
+	const rows = db
+		.prepare(
+			`SELECT e.payload AS payload, e.at AS at, e.session_id AS sessionId, e.line_id AS lineId
+			 FROM events e
+			 WHERE e.type = 'lookup'
+			   AND e.payload IS NOT NULL
+			   AND json_extract(e.payload, '$.lemma') NOT IN (SELECT lemma FROM mining)`
+		)
+		.all() as { payload: string; at: number; sessionId: number; lineId: number | null }[];
+
+	return rows.flatMap((r) => {
+		try {
+			const p = JSON.parse(r.payload);
+			if (typeof p.lemma !== 'string' || !p.lemma) return [];
+			return [
+				{
+					lemma: p.lemma,
+					surface: typeof p.surface === 'string' ? p.surface : p.lemma,
+					pos: typeof p.pos === 'string' ? p.pos : '',
+					sessionId: r.sessionId,
+					at: r.at,
+					lineId: r.lineId
+				}
+			];
+		} catch {
+			return [];
+		}
+	});
+}
+
+export function lineById(id: number): { text: string; speaker: string | null } | null {
+	return (
+		(db.prepare('SELECT text, speaker FROM lines WHERE id = ?').get(id) as {
+			text: string;
+			speaker: string | null;
+		}) ?? null
+	);
+}
+
+export function recordDecision(
+	lemma: string,
+	status: 'approved' | 'rejected',
+	noteId: string | null,
+	at = Date.now()
+): void {
+	db.prepare(
+		`INSERT INTO mining (lemma, status, decided_at, note_id) VALUES (?, ?, ?, ?)
+		 ON CONFLICT(lemma) DO UPDATE SET status = excluded.status,
+		                                  decided_at = excluded.decided_at,
+		                                  note_id = excluded.note_id`
+	).run(lemma, status, at, noteId);
+}
+
+export function miningCounts(): { approved: number; rejected: number } {
+	const rows = db.prepare('SELECT status, COUNT(*) AS n FROM mining GROUP BY status').all() as {
+		status: string;
+		n: number;
+	}[];
+	return {
+		approved: rows.find((r) => r.status === 'approved')?.n ?? 0,
+		rejected: rows.find((r) => r.status === 'rejected')?.n ?? 0
+	};
 }
 
 export function sessionInfo(sessionId: number): { id: number; mode: string; started_at: number } {
