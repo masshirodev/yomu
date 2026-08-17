@@ -13,9 +13,11 @@
 		names: NameEntry[];
 		onlookup: (token: Token, lineId: number) => void;
 		onexplain: (lineId: number, text: string) => void;
+		oncheck: (lineId: number, text: string) => void;
 	};
 
-	let { id, kind, speaker, text, furiganaMode, names, onlookup, onexplain }: Props = $props();
+	let { id, kind, speaker, text, furiganaMode, names, onlookup, onexplain, oncheck }: Props =
+		$props();
 
 	let tokens = $state<Token[] | null>(null);
 
@@ -92,6 +94,13 @@
 			onclick={() => onexplain(id, text)}
 		>
 			explain
+		</button>
+		<button
+			class="font-mono text-[10px] text-neutral-700 opacity-0 transition group-hover:opacity-100
+				hover:text-emerald-500 focus:opacity-100"
+			onclick={() => oncheck(id, text)}
+		>
+			check me
 		</button>
 	</div>
 

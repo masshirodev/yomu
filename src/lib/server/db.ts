@@ -101,6 +101,25 @@ CREATE TABLE IF NOT EXISTS explanations (
 );
 CREATE INDEX IF NOT EXISTS explanations_status ON explanations(status, created_at);
 
+-- Phase 6. What the reader thought a line meant, written before seeing any
+-- answer, and the grade that came back afterwards.
+--
+-- The guess is stored the moment it is submitted and never overwritten by
+-- grading. An attempt is worth keeping even if the grader fails, is offline, or
+-- is changed later -- it is the only record of what was actually understood at
+-- that point in the story, and it cannot be reconstructed after the fact.
+CREATE TABLE IF NOT EXISTS attempts (
+  id         INTEGER PRIMARY KEY,
+  line_id    INTEGER NOT NULL REFERENCES lines(id),
+  session_id INTEGER NOT NULL REFERENCES sessions(id),
+  guess      TEXT    NOT NULL,
+  created_at INTEGER NOT NULL,
+  graded_at  INTEGER,
+  verdict    TEXT,
+  error      TEXT
+);
+CREATE INDEX IF NOT EXISTS attempts_line ON attempts(line_id);
+
 -- Mining decisions. A lemma appears here once it has been approved or rejected,
 -- so a word turned down does not keep resurfacing every session and a word
 -- already mined is never offered twice.
@@ -439,4 +458,51 @@ export function saveExplanation(
 		   status = excluded.status, result = excluded.result,
 		   error = excluded.error, completed_at = excluded.completed_at`
 	).run(key, lineId, error ? 'failed' : 'done', prompt, result, provider, error, at, at);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6: attempts
+// ---------------------------------------------------------------------------
+
+export type AttemptRow = {
+	id: number;
+	line_id: number;
+	guess: string;
+	created_at: number;
+	graded_at: number | null;
+	verdict: string | null;
+	error: string | null;
+};
+
+/** Stored before grading is attempted, so a grader failure never loses it. */
+export function saveAttempt(
+	lineId: number,
+	sessionId: number,
+	guess: string,
+	at = Date.now()
+): number {
+	const r = db
+		.prepare('INSERT INTO attempts (line_id, session_id, guess, created_at) VALUES (?, ?, ?, ?)')
+		.run(lineId, sessionId, guess, at);
+	return Number(r.lastInsertRowid);
+}
+
+export function recordVerdict(
+	id: number,
+	verdict: string | null,
+	error: string | null,
+	at = Date.now()
+): void {
+	db.prepare('UPDATE attempts SET verdict = ?, error = ?, graded_at = ? WHERE id = ?').run(
+		verdict,
+		error,
+		at,
+		id
+	);
+}
+
+export function attemptsForLine(lineId: number): AttemptRow[] {
+	return db
+		.prepare('SELECT * FROM attempts WHERE line_id = ? ORDER BY id')
+		.all(lineId) as AttemptRow[];
 }

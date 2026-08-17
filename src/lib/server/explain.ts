@@ -169,7 +169,7 @@ export function extractText(value: unknown, out: string[]): void {
 	for (const key of ['part', 'message', 'content', 'data']) extractText(record[key], out);
 }
 
-export function extractJson(output: string): unknown {
+export function extractJson(output: string, requiredKey = 'translation'): unknown {
 	const fragments: string[] = [];
 	for (const line of output.split('\n')) {
 		if (!line.trim()) continue;
@@ -187,7 +187,7 @@ export function extractJson(output: string): unknown {
 		if (first === -1 || last <= first) continue;
 		try {
 			const parsed = JSON.parse(candidate.slice(first, last + 1));
-			if (parsed && typeof parsed === 'object' && 'translation' in parsed) return parsed;
+			if (parsed && typeof parsed === 'object' && requiredKey in parsed) return parsed;
 		} catch {
 			continue;
 		}
@@ -199,7 +199,15 @@ export function explainConfigured(): boolean {
 	return Boolean(env.YOMU_EXPLAIN_BIN || DEFAULT_BIN);
 }
 
-export async function runExplain(prompt: string): Promise<Explanation> {
+/**
+ * Run a prompt through the configured provider and parse its answer.
+ *
+ * `requiredKey` is what distinguishes a complete answer from a fragment: the
+ * provider streams text in pieces, so the parser needs to know which key marks
+ * the object it is looking for. Explanations carry `translation`, grades carry
+ * `gist`.
+ */
+export async function runProvider<T>(prompt: string, requiredKey: string): Promise<T> {
 	const model = env.YOMU_EXPLAIN_MODEL;
 	const variant = env.YOMU_EXPLAIN_VARIANT || 'minimal';
 
@@ -214,8 +222,12 @@ export async function runExplain(prompt: string): Promise<Explanation> {
 			cwd: dir,
 			timeoutMs: Number(env.YOMU_EXPLAIN_TIMEOUT_MS ?? 120_000)
 		});
-		return extractJson(stdout) as Explanation;
+		return extractJson(stdout, requiredKey) as T;
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
+}
+
+export function runExplain(prompt: string): Promise<Explanation> {
+	return runProvider<Explanation>(prompt, 'translation');
 }

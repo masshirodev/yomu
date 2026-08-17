@@ -4,6 +4,7 @@
 	import DefinitionPanel from '$lib/components/DefinitionPanel.svelte';
 	import NamePanel from '$lib/components/NamePanel.svelte';
 	import ExplainPanel from '$lib/components/ExplainPanel.svelte';
+	import AttemptPanel from '$lib/components/AttemptPanel.svelte';
 	import SessionPanel from '$lib/components/SessionPanel.svelte';
 	import MiningPanel from '$lib/components/MiningPanel.svelte';
 	import { loadTokenizer, type Token } from '$lib/tokenize';
@@ -31,6 +32,7 @@
 	let explaining = $state<{ lineId: number; text: string; span: string | null } | null>(null);
 	/** A phrase the reader has selected by dragging across the text. */
 	let phrase = $state<{ lineId: number; text: string; span: string } | null>(null);
+	let checking = $state<{ lineId: number; text: string } | null>(null);
 	let session = $state<{ id: number; mode: string; startedAt: number } | null>(null);
 	let stats = $state<SessionStats | null>(null);
 	let viewport = $state<HTMLDivElement | null>(null);
@@ -217,12 +219,22 @@
 				onexplain={(lineId, text) => {
 					explaining = { lineId, text, span: null };
 					selected = null;
+					checking = null;
+				}}
+				oncheck={(lineId, text) => {
+					checking = { lineId, text };
+					explaining = null;
+					selected = null;
 				}}
 			/>
 		{/each}
 	</div>
 
-	{#if phrase && !explaining && !selected}
+	{#if checking}
+		<AttemptPanel lineId={checking.lineId} text={checking.text} onclose={() => (checking = null)} />
+	{/if}
+
+	{#if phrase && !explaining && !selected && !checking}
 		<!-- Offered rather than fired automatically: selecting text is also just
 		     how you read carefully, and a model call on every drag would be both
 		     expensive and startling. -->
