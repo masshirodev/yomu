@@ -29,6 +29,17 @@ export type Enrichment = {
 	meaning: string;
 	/** A natural English rendering of the sentence the word was met in. */
 	sentence: string;
+	/**
+	 * The same sentence read structurally, in Japanese order.
+	 *
+	 * A natural translation tells you what the line meant. It does not tell you
+	 * how the Japanese got there, and that is the half you need to read the
+	 * *next* line -- 嫌悪の色を宿す arrives as 'harboured a deep-rooted loathing',
+	 * which hides that 色 is a tinge and 宿す is to house. Reading both is the
+	 * sandwich technique, and for someone decoding rather than producing it is
+	 * the useful one.
+	 */
+	literal: string;
 	/** Register, nuance, or why this word is the one used. One or two sentences. */
 	note: string;
 };
@@ -169,6 +180,12 @@ export function composeCard(input: {
 	if (annotatedSentence) {
 		lines.push('');
 		lines.push(speaker ? `${speaker}: ${annotatedSentence}` : annotatedSentence);
+		// Structure first, then the natural reading. You have just read the
+		// Japanese; the gloss shows how it parses, and the natural line shows what
+		// that adds up to. The other order gives away the answer before the work.
+		const literal = enrichment?.literal?.trim();
+		if (literal) lines.push(`lit. ${literal}`);
+
 		const english = enrichment?.sentence?.trim() || sentenceTranslation?.trim();
 		if (english) lines.push(english);
 	}
@@ -202,6 +219,7 @@ For each word you are given the word, its dictionary glosses, and the sentence t
 Rules:
 - "meaning" is the sense that applies IN THIS SENTENCE, in a few words. Choose among the glosses given; do not invent a sense they do not support. If the glosses are all wrong for this context, say what it means here anyway and keep it short.
 - "sentence" is a natural English rendering of the whole sentence. Natural, not word-for-word — it is there to show what the reader was supposed to get.
+- "literal" is the same sentence read structurally, following Japanese order and keeping each word's own sense, so the reader can see how the parts add up to the natural reading. Keep it grammatical enough to follow. Where a word is figurative, use its figurative sense rather than its concrete one — 色 in 嫌悪の色 is a tinge, not a colour — because a gloss that is literal but wrong teaches a wrong analysis, which is the only way this field can do harm.
 - "note" is one or two sentences on register, nuance, or why this word rather than a neighbour. Say something specific to this word in this line. If there is genuinely nothing worth saying, use an empty string rather than padding.
 - NEVER give readings, kana, romaji or pronunciation for the word itself. Those are computed from the dictionary and yours would compete with them.
 - Write character names in the English sentence in romaji, using any reading given to you. Never half-convert a name: 桜羽エマ becomes Sakuraba Ema, never 'Sakura羽 Emma'.
@@ -231,9 +249,10 @@ const SCHEMA = {
 					lemma: { type: 'string' },
 					meaning: { type: 'string' },
 					sentence: { type: 'string' },
+					literal: { type: 'string' },
 					note: { type: 'string' }
 				},
-				required: ['lemma', 'meaning', 'sentence', 'note']
+				required: ['lemma', 'meaning', 'sentence', 'literal', 'note']
 			}
 		}
 	},
@@ -343,4 +362,48 @@ export function parseBrackets(text: string): FuriganaSegment[] {
 
 	flush();
 	return segments;
+}
+
+/**
+ * Match the model's entries back to the words that were asked about.
+ *
+ * Keying on the lemma alone loses entries, and loses them silently. The prompt
+ * shows both forms -- `1. 待っ  (lemma: 待つ)` -- and the model quite reasonably
+ * answers with the one it was shown first, so 待つ, 気安い and 吐く came back
+ * unmatched while every word whose lemma equalled its surface matched fine. The
+ * cards still went out, just thin, which is the worst way to fail: nothing
+ * errored and three cards were quietly worse than the other eight.
+ *
+ * So: lemma, then surface, then position. Position is last because it is the
+ * only one that can match the wrong word, and it is included at all because a
+ * model that renames every key still returns them in the order it was asked.
+ */
+export function matchEnrichments<T extends { lemma: string; surface: string }>(
+	asked: readonly T[],
+	got: readonly (Enrichment & { lemma?: string })[]
+): { matched: Map<string, Enrichment>; unmatched: string[] } {
+	const matched = new Map<string, Enrichment>();
+	const spare = [...got];
+
+	const take = (predicate: (w: (typeof spare)[number]) => boolean) => {
+		const i = spare.findIndex(predicate);
+		return i === -1 ? null : spare.splice(i, 1)[0];
+	};
+
+	for (const item of asked) {
+		const hit =
+			take((w) => w.lemma === item.lemma) ?? take((w) => w.lemma === item.surface) ?? null;
+		if (hit) matched.set(item.lemma, hit);
+	}
+
+	// Anything still unclaimed is handed out in the order it was asked for.
+	const leftover = asked.filter((a) => !matched.has(a.lemma));
+	if (spare.length && spare.length === leftover.length) {
+		leftover.forEach((a, i) => matched.set(a.lemma, spare[i]));
+	}
+
+	return {
+		matched,
+		unmatched: asked.filter((a) => !matched.has(a.lemma)).map((a) => a.lemma)
+	};
 }

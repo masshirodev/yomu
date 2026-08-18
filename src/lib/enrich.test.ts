@@ -5,6 +5,7 @@ import {
 	buildEnrichPrompt,
 	composeCard,
 	ENRICH_RULES,
+	matchEnrichments,
 	parseBrackets,
 	romanizeName
 } from './enrich';
@@ -71,6 +72,7 @@ describe('composeCard', () => {
 		enrichment: {
 			meaning: 'to give up (on something)',
 			sentence: "I-I'm not giving up!",
+			literal: 'I-I, because I will not give up!',
 			note: 'Negated as 諦めない. She uses ボク, a boyish first person, which reads as bravado here.'
 		}
 	};
@@ -99,7 +101,7 @@ describe('composeCard', () => {
 			...base,
 			glosses: [],
 			annotatedSentence: null,
-			enrichment: { meaning: 'to give up', sentence: '', note: '' }
+			enrichment: { meaning: 'to give up', sentence: '', literal: '', note: '' }
 		});
 		expect(sparse.back).not.toMatch(/\n\n\n/u);
 		expect(sparse.back.startsWith('\n')).toBe(false);
@@ -118,7 +120,7 @@ describe('composeCard', () => {
 		const echoed = composeCard({
 			...base,
 			glosses: ['to give up'],
-			enrichment: { meaning: 'to give up', sentence: '', note: '' }
+			enrichment: { meaning: 'to give up', sentence: '', literal: '', note: '' }
 		});
 		expect(echoed.back.match(/to give up/gu)).toHaveLength(1);
 	});
@@ -226,6 +228,7 @@ describe('what the model is not trusted with', () => {
 			enrichment: {
 				meaning: 'back teeth',
 				sentence: '',
+				literal: '',
 				// A model told not to give readings sometimes gives one anyway. It
 				// lands in prose, where it is visibly a remark; it can never replace
 				// the bracket reading, which is built from the dictionary.
@@ -246,7 +249,7 @@ describe('what the model is not trusted with', () => {
 			speaker: null,
 			annotatedSentence: null,
 			sentenceTranslation: null,
-			enrichment: { meaning: '', sentence: '', note: '' }
+			enrichment: { meaning: '', sentence: '', literal: '', note: '' }
 		});
 
 		expect(card.back).toContain('back teeth');
@@ -341,5 +344,109 @@ describe('names beat the tokenizer', () => {
 		expect(annotateSentence(tokens, align, [{ surface: '桜羽エマ', reading: null }])).toBe(
 			'桜[さくら]羽[わ]エマは耳[みみ]'
 		);
+	});
+});
+
+describe('matchEnrichments', () => {
+	const asked = [
+		{ lemma: '待つ', surface: '待っ' },
+		{ lemma: '嫌悪', surface: '嫌悪' },
+		{ lemma: '気安い', surface: '気安く' }
+	];
+	const e = (meaning: string) => ({ meaning, sentence: '', literal: '', note: '' });
+
+	it('matches on the lemma when the model uses it', () => {
+		const { matched, unmatched } = matchEnrichments(asked, [
+			{ lemma: '待つ', ...e('to wait') },
+			{ lemma: '嫌悪', ...e('disgust') },
+			{ lemma: '気安い', ...e('familiar') }
+		]);
+		expect(matched.get('待つ')?.meaning).toBe('to wait');
+		expect(unmatched).toEqual([]);
+	});
+
+	it('matches on the surface when the model echoes that instead', () => {
+		// The real failure: three of eleven cards went out thin because the model
+		// answered with 待っ, the form the prompt showed it first.
+		const { matched, unmatched } = matchEnrichments(asked, [
+			{ lemma: '待っ', ...e('to wait') },
+			{ lemma: '嫌悪', ...e('disgust') },
+			{ lemma: '気安く', ...e('familiar') }
+		]);
+		expect(matched.get('待つ')?.meaning).toBe('to wait');
+		expect(matched.get('気安い')?.meaning).toBe('familiar');
+		expect(unmatched).toEqual([]);
+	});
+
+	it('falls back to position when the keys are useless', () => {
+		const { matched } = matchEnrichments(asked, [
+			{ lemma: '1', ...e('to wait') },
+			{ lemma: '2', ...e('disgust') },
+			{ lemma: '3', ...e('familiar') }
+		]);
+		expect(matched.get('気安い')?.meaning).toBe('familiar');
+	});
+
+	it('refuses to guess by position when the counts disagree', () => {
+		// Position is the only rule that can match the wrong word, so it only runs
+		// when every remaining entry lines up with every remaining question.
+		const { matched, unmatched } = matchEnrichments(asked, [{ lemma: '???', ...e('to wait') }]);
+		expect(matched.size).toBe(0);
+		expect(unmatched).toEqual(['待つ', '嫌悪', '気安い']);
+	});
+
+	it('never hands the same entry to two words', () => {
+		const dup = [
+			{ lemma: '嫌悪', surface: '嫌悪' },
+			{ lemma: '嫌悪', surface: '嫌悪' }
+		];
+		const { matched } = matchEnrichments(dup, [{ lemma: '嫌悪', ...e('disgust') }]);
+		expect(matched.size).toBe(1);
+	});
+});
+
+describe('the literal gloss', () => {
+	it('shows the structure above the natural reading', () => {
+		// A natural translation says what the line meant. It does not say how the
+		// Japanese got there, and that is the half you need for the next line.
+		const card = composeCard({
+			lemma: '宿す',
+			reading: 'やどす',
+			wordSegments: furigana('宿す', 'ヤドス'),
+			glosses: ['to house', 'to harbour'],
+			speaker: null,
+			annotatedSentence: '瞳[ひとみ]は、根深[ねぶか]い嫌悪[けんお]の色[いろ]を宿[やど]していた。',
+			sentenceTranslation: null,
+			enrichment: {
+				meaning: 'to harbour (an emotion)',
+				sentence: "Hiro's eyes harboured a deep-rooted loathing.",
+				literal: 'The eyes were housing the tinge of a deep-rooted loathing.',
+				note: ''
+			}
+		});
+
+		const back = card.back.split('\n');
+		const jp = back.findIndex((l) => l.includes('瞳'));
+		expect(back[jp + 1]).toBe('lit. The eyes were housing the tinge of a deep-rooted loathing.');
+		expect(back[jp + 2]).toBe("Hiro's eyes harboured a deep-rooted loathing.");
+	});
+
+	it('is dropped rather than labelled empty', () => {
+		const card = composeCard({
+			lemma: '宿す',
+			reading: 'やどす',
+			wordSegments: furigana('宿す', 'ヤドス'),
+			glosses: ['to house'],
+			speaker: null,
+			annotatedSentence: '瞳[ひとみ]は',
+			sentenceTranslation: null,
+			enrichment: { meaning: 'to harbour', sentence: 'The eyes.', literal: '', note: '' }
+		});
+		expect(card.back).not.toContain('lit.');
+	});
+
+	it('tells the model that a wrong literal is the only way it can do harm', () => {
+		expect(ENRICH_RULES).toMatch(/figurative sense rather than its concrete one/);
+		expect(ENRICH_RULES).toMatch(/teaches a wrong analysis/);
 	});
 });

@@ -158,8 +158,14 @@ CREATE TABLE IF NOT EXISTS mining_drafts (
  * 2: the front is the dictionary form rather than the inflected surface, and
  *    recorded name readings override the tokenizer in the sentence. Format 1
  *    shipped 桜[さくら]羽[わ]エマ, which teaches a reading that is simply wrong.
+ * 3: the model's answers are matched back by lemma, then surface, then
+ *    position. Format 2 keyed on the lemma alone, so every word whose lemma
+ *    differed from the form it appeared as -- 待つ, 気安い, 吐く -- silently
+ *    lost its enrichment and shipped a thin card.
+ * 4: a literal gloss beside the natural translation, so the sentence shows how
+ *    its parts add up rather than only what they add up to.
  */
-export const CARD_FORMAT = 2;
+export const CARD_FORMAT = 4;
 
 // Rows written before the column existed default to 0, which is exactly right:
 // they predate every format and all of them need rebuilding.

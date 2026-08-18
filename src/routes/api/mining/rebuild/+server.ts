@@ -18,6 +18,7 @@ import {
 	annotateSentence,
 	buildEnrichPrompt,
 	composeCard,
+	matchEnrichments,
 	type Enrichment,
 	type SentenceToken
 } from '$lib/enrich';
@@ -121,7 +122,14 @@ export const POST: RequestHandler = async ({ request }) => {
 				),
 				'words'
 			);
-			enrichments = new Map((reply.words ?? []).map((w) => [w.lemma, w]));
+			const { matched, unmatched } = matchEnrichments(
+				prepared.map((p) => ({ lemma: p.word.lemma, surface: p.word.surface })),
+				reply.words ?? []
+			);
+			enrichments = matched;
+			// Said out loud. Unmatched words still get a card, just a thin one, and
+			// a thin card that nothing reports is the worst way for this to fail.
+			if (unmatched.length) failure = `no enrichment matched: ${unmatched.join(', ')}`;
 		} catch (e) {
 			failure = e instanceof Error ? e.message : String(e);
 		}
