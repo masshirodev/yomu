@@ -1,10 +1,20 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
-import { allLookups, lineById, miningCounts, recordDecision } from '$lib/server/db';
+import {
+	allLookups,
+	deleteDraft,
+	draftByLemma,
+	lineById,
+	listDrafts,
+	miningCounts,
+	recordDecision
+} from '$lib/server/db';
 import { lookup } from '$lib/server/dict';
 import { createNote, latticeConfigured, LatticeError } from '$lib/server/lattice';
-import { formatCard, rankCandidates } from '$lib/mining';
+import { rankCandidates } from '$lib/mining';
+import { composeCard } from '$lib/enrich';
+import { furigana } from '$lib/furigana';
 
 const MAX_CANDIDATES = 40;
 
@@ -33,6 +43,7 @@ export const GET: RequestHandler = () => {
 
 	return json({
 		candidates,
+		drafts: listDrafts(),
 		counts: miningCounts(),
 		latticeReady: latticeConfigured()
 	});
@@ -40,10 +51,51 @@ export const GET: RequestHandler = () => {
 
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json().catch(() => null);
+
+	// Creating the enriched batch. Each card is sent on its own and reported on
+	// its own: a batch that fails halfway must say which words got through, or
+	// the only safe response is to resend everything and duplicate the rest.
+	if (body?.action === 'create') {
+		const lemmas: string[] = Array.isArray(body.lemmas) ? body.lemmas : [];
+		if (!lemmas.length) error(400, 'expected { action: "create", lemmas }');
+
+		const created: string[] = [];
+		const failed: { lemma: string; error: string }[] = [];
+
+		for (const lemma of lemmas) {
+			const draft = draftByLemma(lemma);
+			if (!draft) {
+				failed.push({ lemma, error: 'no draft; enrich it first' });
+				continue;
+			}
+
+			try {
+				const noteId = await createNote({
+					front: draft.front,
+					back: draft.back,
+					tags: draft.tags,
+					deckId: env.YOMU_LATTICE_DECK
+				});
+				// Same order as the single-word path: Lattice confirms, then the word
+				// is retired from the queue, then the draft is spent.
+				recordDecision(lemma, 'approved', noteId);
+				deleteDraft(lemma);
+				created.push(lemma);
+			} catch (e) {
+				failed.push({ lemma, error: e instanceof Error ? e.message : String(e) });
+			}
+		}
+
+		return json({ ok: failed.length === 0, created, failed, counts: miningCounts() });
+	}
+
 	if (!body || typeof body.lemma !== 'string') error(400, 'expected { lemma, action }');
 
 	if (body.action === 'reject') {
 		recordDecision(body.lemma, 'rejected', null);
+		// A skipped word must not leave an enriched draft behind, or it reappears in
+		// the review list having already been decided against.
+		deleteDraft(body.lemma);
 		return json({ ok: true, counts: miningCounts() });
 	}
 
@@ -55,12 +107,21 @@ export const POST: RequestHandler = async ({ request }) => {
 	const line = candidate.lineId === null ? null : lineById(candidate.lineId);
 	const [entry] = lookup(candidate.lemma, candidate.surface);
 
-	const card = formatCard({
+	// The quick path: no provider call, so no meaning-in-context and no
+	// annotated sentence -- the tokenizer that would furigana it runs in the
+	// browser. Readings on the word itself still come through, which is the
+	// difference between a card you can read and one you cannot.
+	const reading = entry?.kana?.[0] ?? null;
+	const card = composeCard({
+		lemma: candidate.lemma,
 		surface: candidate.surface,
-		reading: entry?.kana?.[0] ?? null,
+		reading,
+		wordSegments: furigana(candidate.surface, reading),
 		glosses: entry?.senses?.[0]?.gloss ?? [],
-		sentence: line?.text ?? null,
-		speaker: line?.speaker ?? null
+		speaker: line?.speaker ?? null,
+		annotatedSentence: line?.text ?? null,
+		sentenceTranslation: null,
+		enrichment: null
 	});
 
 	try {

@@ -1,6 +1,10 @@
 /**
  * Turning the friction log into flashcard candidates.
  *
+ * Ranking only. What a candidate becomes on a card lives in `$lib/enrich`,
+ * because a card is now built from the dictionary, the tokenizer and a provider
+ * call rather than from a candidate alone.
+ *
  * The premise of the whole project: what you actually looked up is better
  * evidence of what you do not know than any frequency list. A word ranks here
  * because it cost you something, not because a corpus says it is common.
@@ -106,39 +110,4 @@ export function rankCandidates(lookups: LookupRecord[]): Candidate[] {
 	// Highest friction first; most recent breaks ties so a review session starts
 	// with what is still fresh.
 	return candidates.sort((a, b) => b.score - a.score || b.lastAt - a.lastAt);
-}
-
-export type CardContent = { front: string; back: string; tags: string };
-
-/**
- * Format a candidate as a sentence card.
- *
- * The sentence is the point. A bare word-to-gloss pair is the weakest kind of
- * flashcard; the same word inside the line you failed to read is what makes it
- * stick, and the speaker is worth keeping because register is half of what
- * these characters mean.
- */
-export function formatCard(input: {
-	surface: string;
-	reading: string | null;
-	glosses: string[];
-	sentence: string | null;
-	speaker: string | null;
-}): CardContent {
-	const { surface, reading, glosses, sentence, speaker } = input;
-
-	const parts: string[] = [];
-	if (reading && reading !== surface) parts.push(reading);
-	if (glosses.length > 0) parts.push(glosses.slice(0, 4).join('; '));
-
-	if (sentence) {
-		parts.push('');
-		parts.push(speaker ? `${speaker}: ${sentence}` : sentence);
-	}
-
-	return {
-		front: surface,
-		back: parts.join('\n').trim(),
-		tags: 'yomu,manosaba'
-	};
 }

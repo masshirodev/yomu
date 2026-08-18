@@ -129,6 +129,20 @@ CREATE TABLE IF NOT EXISTS mining (
   decided_at INTEGER NOT NULL,
   note_id    TEXT
 );
+
+-- Enriched cards waiting to be sent.
+--
+-- Kept in the database rather than held in the page because enrichment costs a
+-- provider call: a reload, a closed tab or a second thought must not spend it
+-- again. It also makes the batch reviewable -- the whole point of enriching
+-- before creating is that you get to look at what you are about to study.
+CREATE TABLE IF NOT EXISTS mining_drafts (
+  lemma      TEXT PRIMARY KEY,
+  front      TEXT NOT NULL,
+  back       TEXT NOT NULL,
+  tags       TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
 `);
 
 export function openSession(now = Date.now()): number {
@@ -509,4 +523,39 @@ export function attemptsForLine(lineId: number): AttemptRow[] {
 
 export function attemptById(id: number): AttemptRow | null {
 	return (db.prepare('SELECT * FROM attempts WHERE id = ?').get(id) as AttemptRow) ?? null;
+}
+
+export type DraftRow = {
+	lemma: string;
+	front: string;
+	back: string;
+	tags: string;
+	created_at: number;
+};
+
+export function saveDraft(
+	draft: { lemma: string; front: string; back: string; tags: string },
+	at = Date.now()
+): void {
+	db.prepare(
+		`INSERT INTO mining_drafts (lemma, front, back, tags, created_at) VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(lemma) DO UPDATE SET front = excluded.front,
+		                                  back = excluded.back,
+		                                  tags = excluded.tags,
+		                                  created_at = excluded.created_at`
+	).run(draft.lemma, draft.front, draft.back, draft.tags, at);
+}
+
+export function listDrafts(): DraftRow[] {
+	return db
+		.prepare('SELECT * FROM mining_drafts ORDER BY created_at ASC, lemma ASC')
+		.all() as DraftRow[];
+}
+
+export function draftByLemma(lemma: string): DraftRow | null {
+	return (db.prepare('SELECT * FROM mining_drafts WHERE lemma = ?').get(lemma) as DraftRow) ?? null;
+}
+
+export function deleteDraft(lemma: string): void {
+	db.prepare('DELETE FROM mining_drafts WHERE lemma = ?').run(lemma);
 }

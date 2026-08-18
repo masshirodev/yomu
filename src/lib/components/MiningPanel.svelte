@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { SvelteSet } from 'svelte/reactivity';
 	import { toRomaji } from '$lib/romaji';
+	import { tokenize } from '$lib/tokenize';
+	import CardPreview from './CardPreview.svelte';
 
 	type Candidate = {
 		lemma: string;
@@ -13,35 +16,148 @@
 		glosses: string[];
 	};
 
+	type Draft = { lemma: string; front: string; back: string; tags: string };
+
 	type Props = { onclose: () => void };
 	let { onclose }: Props = $props();
 
 	let candidates = $state<Candidate[] | null>(null);
+	let drafts = $state<Draft[]>([]);
+	const selected = new SvelteSet<string>();
 	let counts = $state({ approved: 0, rejected: 0 });
 	let latticeReady = $state(true);
 	let busy = $state<string | null>(null);
 	let failed = $state<string | null>(null);
+	let notice = $state<string | null>(null);
+
+	const MAX_BATCH = 12;
+	const pending = $derived(
+		candidates?.filter((c) => !drafts.some((d) => d.lemma === c.lemma)) ?? []
+	);
 
 	async function load() {
 		const d = await (await fetch('/api/mining')).json();
 		candidates = d.candidates;
+		drafts = d.drafts ?? [];
 		counts = d.counts;
 		latticeReady = d.latticeReady;
 	}
 
-	async function decide(lemma: string, action: 'approve' | 'reject') {
+	function toggle(lemma: string) {
+		if (selected.has(lemma)) selected.delete(lemma);
+		else if (selected.size < MAX_BATCH) selected.add(lemma);
+	}
+
+	/**
+	 * Enrich the selection.
+	 *
+	 * The sentences are tokenised here because the tokenizer is browser-only by
+	 * design -- the host running this has four cores and two dozen containers, and
+	 * putting morphological analysis on it was never the plan. Sending the
+	 * readings along is what lets the server write furigana without one.
+	 */
+	async function enrich() {
+		if (!selected.size || busy) return;
+		busy = 'enrich';
+		failed = null;
+		notice = null;
+
+		try {
+			const chosen = (candidates ?? []).filter((c) => selected.has(c.lemma));
+			const items = await Promise.all(
+				chosen.map(async (c) => ({
+					lemma: c.lemma,
+					tokens: c.sentence
+						? (await tokenize(c.sentence)).map((t) => ({
+								surface: t.surface,
+								reading: t.reading
+							}))
+						: []
+				}))
+			);
+
+			const res = await fetch('/api/mining/enrich', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ items })
+			});
+			if (!res.ok) throw new Error(await res.text());
+
+			const d = await res.json();
+			drafts = [
+				...drafts.filter((x) => !d.drafts.some((n: Draft) => n.lemma === x.lemma)),
+				...d.drafts
+			];
+			selected.clear();
+			// A provider failure still yields dictionary-only cards, so this is a
+			// note about quality rather than an error about nothing happening.
+			if (d.error) notice = `Cards built from the dictionary only — ${d.error}`;
+		} catch (e) {
+			failed = String(e);
+		} finally {
+			busy = null;
+		}
+	}
+
+	async function createAll() {
+		if (!drafts.length || busy) return;
+		busy = 'create';
+		failed = null;
+		notice = null;
+
+		try {
+			const res = await fetch('/api/mining', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ action: 'create', lemmas: drafts.map((d) => d.lemma) })
+			});
+			if (!res.ok) throw new Error(await res.text());
+
+			const d = await res.json();
+			counts = d.counts;
+			// Only what Lattice confirmed leaves the list. A card that failed to send
+			// stays exactly where it is, still enriched, ready to retry.
+			const created = new Set<string>(d.created);
+			drafts = drafts.filter((x) => !created.has(x.lemma));
+			candidates = (candidates ?? []).filter((c) => !created.has(c.lemma));
+			if (d.failed?.length) {
+				failed = d.failed
+					.map((f: { lemma: string; error: string }) => `${f.lemma}: ${f.error}`)
+					.join(' · ');
+			}
+		} catch (e) {
+			failed = String(e);
+		} finally {
+			busy = null;
+		}
+	}
+
+	async function discard(lemma: string) {
+		busy = lemma;
+		try {
+			await fetch('/api/mining/enrich', {
+				method: 'DELETE',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ lemma })
+			});
+			drafts = drafts.filter((d) => d.lemma !== lemma);
+		} finally {
+			busy = null;
+		}
+	}
+
+	async function skip(lemma: string) {
 		busy = lemma;
 		failed = null;
 		try {
 			const res = await fetch('/api/mining', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ lemma, action })
+				body: JSON.stringify({ lemma, action: 'reject' })
 			});
 			if (!res.ok) throw new Error(await res.text());
-			// Drop it locally rather than refetching, so approving a run of words does
-			// not reshuffle the list under the cursor between clicks.
 			candidates = (candidates ?? []).filter((c) => c.lemma !== lemma);
+			drafts = drafts.filter((d) => d.lemma !== lemma);
 			counts = (await res.json()).counts;
 		} catch (e) {
 			failed = String(e);
@@ -64,42 +180,108 @@
 	</div>
 
 	<p class="mt-1 font-mono text-[10px] text-neutral-600">
-		Ranked by what actually cost you time, not by frequency. A word met across several sessions
-		outranks one clicked repeatedly in a single moment. {counts.approved} mined · {counts.rejected} skipped.
+		Ranked by what actually cost you time, not by frequency. Select what is worth keeping, enrich
+		the batch, then send it. {counts.approved} mined · {counts.rejected} skipped.
 	</p>
 
 	{#if !latticeReady}
 		<p class="mt-2 font-mono text-xs text-amber-600/80">
-			LATTICE_TOKEN is not configured — approving will fail.
+			LATTICE_TOKEN is not configured — sending will fail.
 		</p>
 	{/if}
 
 	{#if failed}
-		<p class="mt-2 font-mono text-xs text-amber-600/80">{failed}</p>
+		<p class="mt-2 font-mono text-xs text-rose-500/80">{failed}</p>
+	{/if}
+	{#if notice}
+		<p class="mt-2 font-mono text-xs text-amber-600/80">{notice}</p>
+	{/if}
+
+	{#if drafts.length}
+		<section class="mt-4 rounded border border-emerald-900/50 bg-emerald-950/10 px-3 py-3">
+			<div class="flex items-baseline justify-between gap-3">
+				<p class="font-mono text-xs tracking-wider text-emerald-500/80 uppercase">
+					ready to send · {drafts.length}
+				</p>
+				<button
+					class="rounded border border-emerald-800/60 px-2 py-0.5 font-mono text-xs text-emerald-400
+						hover:bg-emerald-900/30 disabled:opacity-40"
+					disabled={busy !== null}
+					onclick={createAll}
+				>
+					{busy === 'create' ? 'sending…' : `send ${drafts.length} to lattice`}
+				</button>
+			</div>
+
+			<ul class="mt-3 space-y-3">
+				{#each drafts as d (d.lemma)}
+					<li class="rounded border border-neutral-800/80 bg-neutral-950/40 px-3 py-2">
+						<div class="flex items-baseline justify-between gap-3">
+							<p class="font-jp text-lg text-neutral-100">{d.front}</p>
+							<button
+								class="shrink-0 font-mono text-[10px] text-neutral-600 hover:text-neutral-400"
+								disabled={busy !== null}
+								onclick={() => discard(d.lemma)}
+							>
+								discard
+							</button>
+						</div>
+						<CardPreview text={d.back} />
+					</li>
+				{/each}
+			</ul>
+		</section>
 	{/if}
 
 	{#if candidates === null}
 		<p class="mt-3 font-mono text-xs text-neutral-600">loading…</p>
-	{:else if candidates.length === 0}
+	{:else if pending.length === 0}
 		<p class="mt-3 font-mono text-xs text-neutral-600">
 			Nothing pending. Candidates appear as you look words up.
 		</p>
 	{:else}
+		<div class="mt-4 flex items-center gap-3">
+			<button
+				class="rounded border border-sky-800/60 px-2 py-0.5 font-mono text-xs text-sky-400
+					hover:bg-sky-900/30 disabled:opacity-40"
+				disabled={selected.size === 0 || busy !== null}
+				onclick={enrich}
+			>
+				{busy === 'enrich' ? 'enriching…' : `enrich ${selected.size || ''} selected`}
+			</button>
+			<span class="font-mono text-[10px] text-neutral-600">
+				one request for the batch · up to {MAX_BATCH}
+			</span>
+		</div>
+
 		<ul class="mt-3 space-y-3">
-			{#each candidates as c (c.lemma)}
-				<li class="rounded border border-neutral-800/80 px-3 py-2">
+			{#each pending as c (c.lemma)}
+				{@const on = selected.has(c.lemma)}
+				<li
+					class="rounded border px-3 py-2 {on
+						? 'border-sky-800/70 bg-sky-950/20'
+						: 'border-neutral-800/80'}"
+				>
 					<div class="flex items-baseline justify-between gap-3">
-						<p class="font-jp text-lg text-neutral-100">
-							{c.surface}
-							{#if c.reading && c.reading !== c.surface}
-								<span class="ml-2 text-sm text-neutral-500">{c.reading}</span>
-							{/if}
-							{#if toRomaji(c.reading ?? c.surface) !== c.surface}
-								<span class="ml-2 font-mono text-[10px] text-neutral-600"
-									>{toRomaji(c.reading ?? c.surface)}</span
-								>
-							{/if}
-						</p>
+						<label class="flex cursor-pointer items-baseline gap-2">
+							<input
+								type="checkbox"
+								class="accent-sky-600"
+								checked={on}
+								onchange={() => toggle(c.lemma)}
+							/>
+							<span class="font-jp text-lg text-neutral-100">
+								{c.surface}
+								{#if c.reading && c.reading !== c.surface}
+									<span class="ml-2 text-sm text-neutral-500">{c.reading}</span>
+								{/if}
+								{#if toRomaji(c.reading ?? c.surface) !== c.surface}
+									<span class="ml-2 font-mono text-[10px] text-neutral-600">
+										{toRomaji(c.reading ?? c.surface)}
+									</span>
+								{/if}
+							</span>
+						</label>
 						<span class="shrink-0 font-mono text-[10px] text-neutral-600">
 							{c.sessions} session{c.sessions === 1 ? '' : 's'} · {c.lookups}×
 						</span>
@@ -115,20 +297,12 @@
 						</p>
 					{/if}
 
-					<div class="mt-2 flex gap-2 font-mono text-xs">
+					<div class="mt-2">
 						<button
-							class="rounded border border-emerald-800/60 px-2 py-0.5 text-emerald-500/90
-								hover:bg-emerald-900/30 disabled:opacity-40"
-							disabled={busy === c.lemma}
-							onclick={() => decide(c.lemma, 'approve')}
-						>
-							{busy === c.lemma ? 'sending…' : 'mine'}
-						</button>
-						<button
-							class="rounded border border-neutral-800 px-2 py-0.5 text-neutral-500
+							class="rounded border border-neutral-800 px-2 py-0.5 font-mono text-xs text-neutral-500
 								hover:bg-neutral-800/50 disabled:opacity-40"
-							disabled={busy === c.lemma}
-							onclick={() => decide(c.lemma, 'reject')}
+							disabled={busy !== null}
+							onclick={() => skip(c.lemma)}
 						>
 							skip
 						</button>

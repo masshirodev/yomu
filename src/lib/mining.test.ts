@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCard, rankCandidates, type LookupRecord } from './mining';
+import { rankCandidates, type LookupRecord } from './mining';
 
 const look = (
 	lemma: string,
@@ -81,56 +81,5 @@ describe('rankCandidates', () => {
 
 	it('returns nothing for an empty log', () => {
 		expect(rankCandidates([])).toEqual([]);
-	});
-});
-
-describe('formatCard', () => {
-	it('puts the sentence you actually met the word in on the back', () => {
-		const card = formatCard({
-			surface: '蔑む',
-			reading: 'さげすむ',
-			glosses: ['to scorn', 'to despise', 'to hold in contempt'],
-			sentence: '蔑まれ、貶められ、嘲笑される毎日に、終わりは見えなかった。',
-			speaker: null
-		});
-
-		expect(card.front).toBe('蔑む');
-		expect(card.back).toContain('さげすむ');
-		expect(card.back).toContain('to scorn; to despise; to hold in contempt');
-		expect(card.back).toContain('嘲笑される毎日');
-	});
-
-	it('keeps the speaker, because register is half of what these characters mean', () => {
-		const card = formatCard({
-			surface: 'ボク',
-			reading: null,
-			glosses: ['I', 'me'],
-			sentence: 'ボ、ボクは、桜羽エマ！',
-			speaker: '桜羽エマ'
-		});
-		expect(card.back).toContain('桜羽エマ: ボ、ボクは、桜羽エマ！');
-	});
-
-	it('omits a reading identical to the surface rather than repeating it', () => {
-		const card = formatCard({
-			surface: 'ボク',
-			reading: 'ボク',
-			glosses: ['I'],
-			sentence: null,
-			speaker: null
-		});
-		expect(card.back).toBe('I');
-	});
-
-	it('survives a candidate with no sentence and no glosses', () => {
-		const card = formatCard({
-			surface: '謎',
-			reading: null,
-			glosses: [],
-			sentence: null,
-			speaker: null
-		});
-		expect(card.front).toBe('謎');
-		expect(card.back).toBe('');
 	});
 });
