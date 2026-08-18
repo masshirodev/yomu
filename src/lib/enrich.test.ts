@@ -450,3 +450,36 @@ describe('the literal gloss', () => {
 		expect(ENRICH_RULES).toMatch(/teaches a wrong analysis/);
 	});
 });
+
+describe('romaji that is not romaji', () => {
+	it('drops the romaji rather than printing kanji in it', () => {
+		// 桜羽エマ has no JMdict entry, so with no reading toRomaji passed the kanji
+		// straight through and the card read `桜羽エマ  桜羽ema`, which is not a
+		// pronunciation of anything.
+		const card = composeCard({
+			lemma: '桜羽エマ',
+			reading: null,
+			wordSegments: furigana('桜羽エマ', null),
+			glosses: [],
+			speaker: null,
+			annotatedSentence: null,
+			sentenceTranslation: null,
+			enrichment: null
+		});
+		expect(card.back).not.toContain('桜羽ema');
+	});
+
+	it('keeps the romaji once a reading is known', () => {
+		const card = composeCard({
+			lemma: '桜羽エマ',
+			reading: 'さくらばえま',
+			wordSegments: furigana('桜羽エマ', 'サクラバエマ'),
+			glosses: [],
+			speaker: null,
+			annotatedSentence: null,
+			sentenceTranslation: null,
+			enrichment: null
+		});
+		expect(card.back).toContain('sakurabaema');
+	});
+});

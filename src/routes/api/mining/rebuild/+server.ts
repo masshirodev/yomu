@@ -39,7 +39,7 @@ import { explainConfigured, runProvider } from '$lib/server/explain';
  * this exists rather than "delete them and mine them again".
  */
 
-const MAX_BATCH = 12;
+const MAX_BATCH = 6;
 
 /** The mined words and the sentences they were met in, for the client to tokenise. */
 export const GET: RequestHandler = () =>
@@ -66,10 +66,15 @@ export const POST: RequestHandler = async ({ request }) => {
 	const selected = minedWords().filter((w) => tokensByLemma.has(w.lemma));
 	if (!selected.length) error(404, 'none of those are mined words');
 
+	const names = listNames();
+
 	const prepared = selected.map((w) => {
 		const line = w.lineId === null ? null : lineById(w.lineId);
 		const [entry] = lookup(w.lemma, w.surface);
-		const reading = entry?.kana?.[0] ?? null;
+		// Names are not in JMdict, but the name thread recorded how they are read.
+		// Without this 桜羽エマ got no reading at all and its romaji line came out
+		// as the literal string 桜羽ema.
+		const reading = entry?.kana?.[0] ?? names.find((n) => n.surface === w.lemma)?.reading ?? null;
 		const tokens = tokensByLemma.get(w.lemma) ?? [];
 
 		return {
@@ -78,9 +83,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			glosses: entry?.senses?.[0]?.gloss ?? [],
 			sentence: line?.text ?? null,
 			speaker: line?.speaker ?? null,
-			annotated: tokens.length
-				? annotateSentence(tokens, furigana, listNames())
-				: (line?.text ?? null),
+			annotated: tokens.length ? annotateSentence(tokens, furigana, names) : (line?.text ?? null),
 			wordSegments: furigana(w.lemma, reading)
 		};
 	});
@@ -117,7 +120,7 @@ export const POST: RequestHandler = async ({ request }) => {
 						speaker: p.speaker
 					})),
 					context,
-					listNames(),
+					names,
 					furigana
 				),
 				'words'
@@ -139,8 +142,21 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	const rebuilt: string[] = [];
 	const failed: { lemma: string; error: string }[] = [];
+	const skipped: string[] = [];
 
 	for (const p of prepared) {
+		const enrichment = enrichments.get(p.word.lemma) ?? null;
+
+		// A card that already exists is only replaced by a better one. Without this
+		// a provider timeout rewrote all eleven cards from the dictionary alone --
+		// losing every translation and note -- and then stamped them current, so
+		// nothing would ever have offered them again. Leaving them untouched costs
+		// one retry; overwriting them costs the content.
+		if (!enrichment) {
+			skipped.push(p.word.lemma);
+			continue;
+		}
+
 		const card = composeCard({
 			lemma: p.word.lemma,
 			reading: p.reading,
@@ -149,7 +165,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			speaker: p.speaker,
 			annotatedSentence: p.annotated,
 			sentenceTranslation: null,
-			enrichment: enrichments.get(p.word.lemma) ?? null
+			enrichment
 		});
 
 		try {
@@ -166,5 +182,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 	}
 
-	return json({ ok: failed.length === 0, rebuilt, failed, error: failure });
+	return json({
+		ok: failed.length === 0 && skipped.length === 0,
+		rebuilt,
+		failed,
+		skipped,
+		error: failure
+	});
 };

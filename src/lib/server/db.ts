@@ -164,8 +164,14 @@ CREATE TABLE IF NOT EXISTS mining_drafts (
  *    lost its enrichment and shipped a thin card.
  * 4: a literal gloss beside the natural translation, so the sentence shows how
  *    its parts add up rather than only what they add up to.
+ * 5: a rebuild no longer replaces a card when the enrichment for it is missing.
+ *    A provider timeout under format 4 rewrote every card from the dictionary
+ *    alone -- losing all eleven translations and notes -- and then stamped them
+ *    current, so nothing would have offered them again. Also: no romaji line
+ *    when the romaji still contains kanji, and names take their reading from
+ *    the name thread when the dictionary has none.
  */
-export const CARD_FORMAT = 4;
+export const CARD_FORMAT = 5;
 
 // Rows written before the column existed default to 0, which is exactly right:
 // they predate every format and all of them need rebuilding.

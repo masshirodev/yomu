@@ -43,8 +43,12 @@ import { explainConfigured, runProvider } from '$lib/server/explain';
  * those readings were computed the moment the line was rendered.
  */
 
-/** Enrichment is one provider call for the whole batch, so cap what one call carries. */
-const MAX_BATCH = 12;
+/**
+ * Enrichment is one provider call for the whole batch, so cap what one call
+ * carries. Twelve words times five fields overran the provider timeout and came
+ * back with nothing; six is comfortably inside it.
+ */
+const MAX_BATCH = 6;
 
 export const GET: RequestHandler = () => json({ drafts: listDrafts() });
 
@@ -64,10 +68,15 @@ export const POST: RequestHandler = async ({ request }) => {
 	const selected = ranked.filter((c) => tokensByLemma.has(c.lemma));
 	if (!selected.length) error(404, 'none of those are candidates');
 
+	const names = listNames();
+
 	const prepared = selected.map((c) => {
 		const line = c.lineId === null ? null : lineById(c.lineId);
 		const [entry] = lookup(c.lemma, c.surface);
-		const reading = entry?.kana?.[0] ?? null;
+		// Names are not in JMdict, but the name thread recorded how they are read.
+		// Without this 桜羽エマ got no reading at all and its romaji line came out
+		// as the literal string 桜羽ema.
+		const reading = entry?.kana?.[0] ?? names.find((n) => n.surface === c.lemma)?.reading ?? null;
 		const tokens = tokensByLemma.get(c.lemma) ?? [];
 
 		return {
@@ -79,9 +88,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			// Annotated from the client's tokens. With none -- an older page, or a
 			// word whose line predates the reader -- the sentence still goes on the
 			// card, just without readings.
-			annotated: tokens.length
-				? annotateSentence(tokens, furigana, listNames())
-				: (line?.text ?? null),
+			annotated: tokens.length ? annotateSentence(tokens, furigana, names) : (line?.text ?? null),
 			wordSegments: furigana(c.lemma, reading)
 		};
 	});
@@ -121,7 +128,7 @@ export const POST: RequestHandler = async ({ request }) => {
 						speaker: p.speaker
 					})),
 					context,
-					listNames(),
+					names,
 					furigana
 				),
 				'words'

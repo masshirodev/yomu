@@ -39,7 +39,7 @@
 	let notice = $state<string | null>(null);
 	let mined = $state<Mined[]>([]);
 
-	const MAX_BATCH = 12;
+	const MAX_BATCH = 6;
 	const pending = $derived(
 		candidates?.filter((c) => !drafts.some((d) => d.lemma === c.lemma)) ?? []
 	);

@@ -63,6 +63,7 @@ export function bracketFurigana(segments: FuriganaSegment[]): string {
 
 const HAN = /\p{Script=Han}/u;
 const KANA_ONLY = /^[\p{Script=Hiragana}\p{Script=Katakana}ー]+$/u;
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
 
 /**
  * Annotate a whole sentence from its tokens.
@@ -169,10 +170,12 @@ export function composeCard(input: {
 	const dictionary = glosses.slice(0, 4).join('; ');
 	if (dictionary && dictionary !== meaning) lines.push(dictionary);
 
-	const sound = [
-		bracketFurigana(wordSegments),
-		reading && reading !== lemma ? toRomaji(reading) : toRomaji(lemma)
-	]
+	// Romaji only when it is actually romaji. toRomaji passes characters it cannot
+	// convert straight through, so a word with no recorded reading -- 桜羽エマ has
+	// no dictionary entry -- came out as the literal string `桜羽ema`, which is
+	// not a pronunciation of anything.
+	const romaji = toRomaji(reading && reading !== lemma ? reading : lemma);
+	const sound = [bracketFurigana(wordSegments), CJK.test(romaji) ? '' : romaji]
 		.filter(Boolean)
 		.join('  ');
 	if (sound) lines.push('', sound);
