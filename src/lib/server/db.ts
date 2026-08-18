@@ -506,3 +506,7 @@ export function attemptsForLine(lineId: number): AttemptRow[] {
 		.prepare('SELECT * FROM attempts WHERE line_id = ? ORDER BY id')
 		.all(lineId) as AttemptRow[];
 }
+
+export function attemptById(id: number): AttemptRow | null {
+	return (db.prepare('SELECT * FROM attempts WHERE id = ?').get(id) as AttemptRow) ?? null;
+}

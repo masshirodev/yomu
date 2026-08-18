@@ -23,6 +23,7 @@
 	let failed = $state<string | null>(null);
 	let busy = $state(false);
 	let box = $state<HTMLTextAreaElement | null>(null);
+	let attemptId = $state<number | null>(null);
 
 	// Reset only when the line changes.
 	//
@@ -37,6 +38,7 @@
 		submitted = null;
 		verdict = null;
 		failed = null;
+		attemptId = null;
 	});
 
 	// Separate effect: reads box, writes nothing, so it cannot reset anything.
@@ -44,25 +46,26 @@
 		box?.focus();
 	});
 
-	async function submit() {
+	async function submit(retry = false) {
 		const value = guess.trim();
-		if (!value || busy) return;
+		if ((!value && !retry) || busy) return;
 
 		busy = true;
 		failed = null;
 		// Shown as committed the moment it is sent. The answer appears only after,
 		// which is the whole point: guessing against a visible answer teaches
 		// nothing, guessing and then being corrected is the part that works.
-		submitted = value;
+		if (!retry) submitted = value;
 
 		try {
 			const res = await fetch('/api/attempt', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ lineId, guess: value })
+				body: JSON.stringify(retry && attemptId ? { attemptId } : { lineId, guess: value })
 			});
 			if (!res.ok) throw new Error(await res.text());
 			const d = await res.json();
+			attemptId = d.id ?? attemptId;
 			verdict = d.verdict;
 			failed = d.error ?? null;
 		} catch (e) {
@@ -110,7 +113,7 @@
 				class="rounded border border-sky-800/60 px-3 py-1 font-mono text-xs text-sky-400
 					hover:bg-sky-900/30 disabled:opacity-40"
 				disabled={!guess.trim() || busy}
-				onclick={submit}
+				onclick={() => submit()}
 			>
 				check it
 			</button>
@@ -125,9 +128,20 @@
 		{#if busy}
 			<p class="mt-4 font-mono text-sm text-neutral-400">checking…</p>
 		{:else if failed}
-			<p class="mt-4 font-mono text-sm text-amber-600/80">
-				Saved, but grading failed: {failed}
-			</p>
+			<div class="mt-4">
+				<p class="font-mono text-sm text-amber-600/80">
+					Saved, but grading failed. Your answer is kept — only the marking needs redoing.
+				</p>
+				<button
+					class="mt-2 rounded border border-amber-800/60 px-3 py-1 font-mono text-xs text-amber-400
+						hover:bg-amber-900/30 disabled:opacity-40"
+					disabled={busy}
+					onclick={() => submit(true)}
+				>
+					try marking again
+				</button>
+				<p class="mt-2 font-mono text-[11px] break-words text-neutral-600">{failed}</p>
+			</div>
 		{:else if verdict}
 			<div class="mt-4 rounded border px-3 py-2 {TONE[verdict.gist]}">
 				<p class="font-mono text-xs tracking-wider uppercase">{verdict.gist}</p>

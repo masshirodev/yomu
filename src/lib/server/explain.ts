@@ -169,6 +169,57 @@ export function extractText(value: unknown, out: string[]): void {
 	for (const key of ['part', 'message', 'content', 'data']) extractText(record[key], out);
 }
 
+/**
+ * Escapes double quotes that sit *inside* a JSON string value.
+ *
+ * The grader is asked not to emit them, but instructions are not a guarantee
+ * and the reader's own words are what get quoted back, so this is the net.
+ *
+ * A quote ends a string only when the next meaningful character is structural
+ * (`,` `}` `]` `:`). Anything else means the model wrote a quote mid-sentence.
+ * This cannot fix every case -- `he said "yes", ok` looks exactly like a
+ * terminator followed by a comma -- but those fall through to the error below
+ * with the raw output attached, rather than being silently mis-parsed.
+ */
+export function repairInnerQuotes(json: string): string {
+	let out = '';
+	let inString = false;
+
+	for (let i = 0; i < json.length; i++) {
+		const c = json[i];
+
+		if (!inString) {
+			out += c;
+			if (c === '"') inString = true;
+			continue;
+		}
+
+		if (c === '\\') {
+			out += c + (json[i + 1] ?? '');
+			i++;
+			continue;
+		}
+
+		if (c !== '"') {
+			out += c;
+			continue;
+		}
+
+		let j = i + 1;
+		while (j < json.length && /\s/u.test(json[j])) j++;
+		const next = json[j];
+
+		if (next === undefined || next === ',' || next === '}' || next === ']' || next === ':') {
+			out += c;
+			inString = false;
+		} else {
+			out += '\\"';
+		}
+	}
+
+	return out;
+}
+
 export function extractJson(output: string, requiredKey = 'translation'): unknown {
 	const fragments: string[] = [];
 	for (const line of output.split('\n')) {
@@ -180,7 +231,10 @@ export function extractJson(output: string, requiredKey = 'translation'): unknow
 		}
 	}
 
-	const candidates = [fragments.join(''), output];
+	// Markdown fences are common and harmless; strip them before looking for
+	// braces so the span search is not thrown off by surrounding prose.
+	const strip = (t: string) => t.replace(/```(?:json)?/gu, '');
+	const candidates = [strip(fragments.join('')), strip(output)];
 	for (const candidate of candidates) {
 		const first = candidate.indexOf('{');
 		const last = candidate.lastIndexOf('}');
@@ -192,7 +246,26 @@ export function extractJson(output: string, requiredKey = 'translation'): unknow
 			continue;
 		}
 	}
-	throw new Error('no JSON object found in provider output');
+	// Salvage: a model that quotes the reader back with raw double quotes emits
+	// JSON that is structurally right but unparseable. Repairing it recovers the
+	// grading rather than losing the reader's writing to a punctuation slip.
+	for (const candidate of candidates) {
+		const first = candidate.indexOf('{');
+		const last = candidate.lastIndexOf('}');
+		if (first === -1 || last <= first) continue;
+		try {
+			const parsed = JSON.parse(repairInnerQuotes(candidate.slice(first, last + 1)));
+			if (parsed && typeof parsed === 'object' && requiredKey in parsed) return parsed;
+		} catch {
+			continue;
+		}
+	}
+
+	// Include a slice of what actually came back. "no JSON object found" with no
+	// sample is undiagnosable after the fact, which is how the first failure was.
+	throw new Error(
+		`no JSON object found in provider output (got: ${output.slice(-300).replace(/\s+/gu, ' ')})`
+	);
 }
 
 export function explainConfigured(): boolean {

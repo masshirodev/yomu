@@ -55,6 +55,7 @@ Rules:
 - "missed" names what they missed or misread, and says what it actually means. Empty if nothing.
 - "note" is one sentence addressed to them directly. Encouraging when they did well, concrete when they did not. Never generic praise.
 - If they wrote something with no relation to the line, or clearly did not know, say so plainly rather than inventing partial credit.
+- When referring to what they wrote, paraphrase it or wrap it in single quotes. Never use double quotes inside any field: the reply is parsed as JSON and a raw double quote inside a string breaks it.
 
 Spoiler rules, which override the above:
 - Use ONLY the provided story context. It is exactly what the reader has already read.

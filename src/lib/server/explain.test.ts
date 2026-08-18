@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPrompt, cacheKey, extractJson } from './explain';
+import { buildPrompt, cacheKey, extractJson, repairInnerQuotes } from './explain';
 import { buildContext } from '$lib/context';
 
 const ctx = (opts: Partial<Parameters<typeof buildContext>[0]> = {}) =>
@@ -106,5 +106,53 @@ describe('extractJson — OpenCode output shape', () => {
 
 	it('throws rather than returning a half-parsed object', () => {
 		expect(() => extractJson('total nonsense, no json here')).toThrow(/no JSON object/);
+	});
+});
+
+describe('repairInnerQuotes', () => {
+	// The real failure: the grader quoted the reader's own words back, and the
+	// reader had written double quotes. The attempt was saved but ungraded.
+	it('escapes quotes the model wrote inside a value', () => {
+		const broken = `{"gist":"partial","note":"You wrote "my instinct" but the line says otherwise"}`;
+		expect(JSON.parse(repairInnerQuotes(broken)).note).toBe(
+			`You wrote "my instinct" but the line says otherwise`
+		);
+	});
+
+	it('leaves valid JSON byte-identical', () => {
+		// Repair runs only after a clean parse fails, but it must still be a no-op
+		// on well-formed input -- a repair that mangles good JSON is worse than no
+		// repair at all.
+		const ok = `{"gist":"correct","got":["negation","subject"],"note":"Nicely read.","voice":null}`;
+		expect(repairInnerQuotes(ok)).toBe(ok);
+		expect(JSON.parse(repairInnerQuotes(ok))).toEqual(JSON.parse(ok));
+	});
+
+	it('does not double-escape quotes that were already escaped', () => {
+		const ok = `{"note":"You wrote \\"maybe\\" here"}`;
+		expect(JSON.parse(repairInnerQuotes(ok)).note).toBe(`You wrote "maybe" here`);
+	});
+
+	it('survives Japanese and structural characters inside values', () => {
+		const broken = `{"gist":"missed","note":"諦めない means "won't give up", not the opposite"}`;
+		// The quote before the comma is genuinely ambiguous -- it looks exactly
+		// like a terminator. What matters is that it throws with the output
+		// attached instead of parsing to something wrong.
+		expect(() => JSON.parse(repairInnerQuotes(broken))).toThrow();
+	});
+});
+
+describe('extractJson salvage', () => {
+	it('recovers a verdict whose note contains raw quotes', () => {
+		const out = `{"gist":"partial","got":[],"missed":[],"note":"Your phrase "my instinct" is not in the line."}`;
+		const v = extractJson(out, 'gist') as { gist: string; note: string };
+		expect(v.gist).toBe('partial');
+		expect(v.note).toContain('my instinct');
+	});
+
+	it('reports what it actually got when nothing is recoverable', () => {
+		// "no JSON object found" with no sample is undiagnosable after the fact,
+		// which is exactly how the first real failure arrived.
+		expect(() => extractJson('provider exploded, sorry', 'gist')).toThrow(/provider exploded/);
 	});
 });

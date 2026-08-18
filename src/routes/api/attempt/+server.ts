@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
+	attemptById,
 	attemptsForLine,
 	characterFacts,
 	contextLines,
@@ -31,10 +32,21 @@ export const GET: RequestHandler = ({ url }) => {
 
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json().catch(() => null);
-	const lineId = Number(body?.lineId);
-	const guess = typeof body?.guess === 'string' ? body.guess.trim() : '';
 
-	if (!Number.isFinite(lineId)) error(400, 'expected { lineId, guess }');
+	// Retrying an existing attempt reuses its stored guess. Grading is the flaky
+	// half; the writing is not, and asking for it again to recover from a
+	// provider hiccup would be the worst possible response to one.
+	const retryId = Number(body?.attemptId);
+	const existing = Number.isFinite(retryId) ? attemptById(retryId) : null;
+
+	const lineId = existing ? existing.line_id : Number(body?.lineId);
+	const guess = existing
+		? existing.guess
+		: typeof body?.guess === 'string'
+			? body.guess.trim()
+			: '';
+
+	if (!Number.isFinite(lineId)) error(400, 'expected { lineId, guess } or { attemptId }');
 	if (!guess) error(400, 'guess is empty');
 
 	const line = lineWithSeq(lineId);
@@ -43,7 +55,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Stored before grading is attempted. The guess is the irreplaceable half:
 	// it is the only record of what was understood at this point in the story,
 	// and a grader that is offline, slow or later changed must never cost it.
-	const id = saveAttempt(lineId, currentSession(), guess);
+	const id = existing ? existing.id : saveAttempt(lineId, currentSession(), guess);
 
 	if (!explainConfigured()) {
 		return json({ id, guess, verdict: null, error: 'no grader configured' });
