@@ -78,8 +78,10 @@ export const POST: RequestHandler = async ({ request }) => {
 			// Annotated from the client's tokens. With none -- an older page, or a
 			// word whose line predates the reader -- the sentence still goes on the
 			// card, just without readings.
-			annotated: tokens.length ? annotateSentence(tokens, furigana) : (line?.text ?? null),
-			wordSegments: furigana(c.surface, reading)
+			annotated: tokens.length
+				? annotateSentence(tokens, furigana, listNames())
+				: (line?.text ?? null),
+			wordSegments: furigana(c.lemma, reading)
 		};
 	});
 
@@ -110,6 +112,8 @@ export const POST: RequestHandler = async ({ request }) => {
 				buildEnrichPrompt(
 					prepared.map((p) => ({
 						lemma: p.candidate.lemma,
+						// The inflected form as it appeared. The card is fronted with the
+						// dictionary form, but the model is explaining this sentence.
 						surface: p.candidate.surface,
 						glosses: p.glosses,
 						sentence: p.sentence,
@@ -135,7 +139,6 @@ export const POST: RequestHandler = async ({ request }) => {
 	const drafts = prepared.map((p) => {
 		const draft = composeCard({
 			lemma: p.candidate.lemma,
-			surface: p.candidate.surface,
 			reading: p.reading,
 			wordSegments: p.wordSegments,
 			glosses: p.glosses,

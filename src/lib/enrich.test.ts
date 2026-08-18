@@ -62,7 +62,6 @@ describe('annotateSentence', () => {
 describe('composeCard', () => {
 	const base = {
 		lemma: '諦める',
-		surface: '諦める',
 		reading: 'あきらめる',
 		wordSegments: furigana('諦める', 'アキラメル'),
 		glosses: ['to give up', 'to abandon'],
@@ -124,8 +123,23 @@ describe('composeCard', () => {
 		expect(echoed.back.match(/to give up/gu)).toHaveLength(1);
 	});
 
-	it('records the decision against the lemma, not the inflected surface', () => {
-		expect(composeCard({ ...base, surface: '諦め' }).lemma).toBe('諦める');
+	it('fronts the dictionary form, not the form that happened to appear', () => {
+		// The first cards read `気安く  kiyasui` -- the inflected surface above the
+		// dictionary form's romaji, which is two different words on one line.
+		const card = composeCard({
+			...base,
+			lemma: '気安い',
+			reading: 'きやすい',
+			wordSegments: furigana('気安い', 'キヤスイ'),
+			glosses: ['friendly'],
+			annotatedSentence: '気安[きやす]く触[ふ]れないでほしい。'
+		});
+
+		expect(card.front).toBe('気安い');
+		expect(card.back).toContain('気安[きやす]い');
+		expect(card.back).toContain('kiyasui');
+		// The inflected form is still there, in the sentence, where it belongs.
+		expect(card.back).toContain('気安[きやす]く');
 	});
 });
 
@@ -203,7 +217,6 @@ describe('what the model is not trusted with', () => {
 	it('uses the computed reading even when the model contradicts it', () => {
 		const card = composeCard({
 			lemma: '奥歯',
-			surface: '奥歯',
 			reading: 'おくば',
 			wordSegments: segments,
 			glosses: ['back teeth', 'molars'],
@@ -227,7 +240,6 @@ describe('what the model is not trusted with', () => {
 	it('falls back to the dictionary when the model returns nothing usable', () => {
 		const card = composeCard({
 			lemma: '奥歯',
-			surface: '奥歯',
 			reading: 'おくば',
 			wordSegments: segments,
 			glosses: ['back teeth'],
@@ -288,5 +300,46 @@ describe('romanizeName', () => {
 		// Alignment fails when the reading cannot be matched to the characters. A
 		// run-on name is poor; a made-up word boundary would be wrong.
 		expect(romanizeName('橘', 'たちばなしぇりー', align)).toBe('Tachibanasherii');
+	});
+});
+
+describe('names beat the tokenizer', () => {
+	// The bug this exists for: kuromoji splits 桜羽 into 桜(さくら) + 羽(わ) and is
+	// confident about it, so a real card went out reading 桜[さくら]羽[わ]エマ.
+	// The name is さくらば. A wrong furigana on a flashcard is drilled.
+	const tokens = [
+		{ surface: '桜', reading: 'さくら' },
+		{ surface: '羽', reading: 'わ' },
+		{ surface: 'エマ', reading: 'えま' },
+		{ surface: 'は', reading: 'は' },
+		{ surface: '耳', reading: 'みみ' }
+	];
+
+	it('uses the recorded name reading across the tokens it spans', () => {
+		expect(
+			annotateSentence(tokens, align, [{ surface: '桜羽エマ', reading: 'さくらばえま' }])
+		).toBe('桜羽[さくらば]エマは耳[みみ]');
+	});
+
+	it('leaves the tokenizer alone when no name matches', () => {
+		expect(
+			annotateSentence(tokens, align, [{ surface: '氷上メルル', reading: 'ひかみめるる' }])
+		).toBe('桜[さくら]羽[わ]エマは耳[みみ]');
+	});
+
+	it('prefers the longest name when several could match', () => {
+		// 桜羽 and 桜羽エマ are both recorded. Matching the shorter one first would
+		// annotate half the name and leave エマ stranded.
+		const names = [
+			{ surface: '桜羽', reading: 'さくらば' },
+			{ surface: '桜羽エマ', reading: 'さくらばえま' }
+		];
+		expect(annotateSentence(tokens, align, names)).toBe('桜羽[さくらば]エマは耳[みみ]');
+	});
+
+	it('ignores a name with no recorded reading', () => {
+		expect(annotateSentence(tokens, align, [{ surface: '桜羽エマ', reading: null }])).toBe(
+			'桜[さくら]羽[わ]エマは耳[みみ]'
+		);
 	});
 });

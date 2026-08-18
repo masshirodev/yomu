@@ -155,8 +155,11 @@ CREATE TABLE IF NOT EXISTS mining_drafts (
  * overwrite an enriched card with a dictionary-only one.
  *
  * 1: readings, romaji, annotated sentence, and meaning in context.
+ * 2: the front is the dictionary form rather than the inflected surface, and
+ *    recorded name readings override the tokenizer in the sentence. Format 1
+ *    shipped 桜[さくら]羽[わ]エマ, which teaches a reading that is simply wrong.
  */
-export const CARD_FORMAT = 1;
+export const CARD_FORMAT = 2;
 
 // Rows written before the column existed default to 0, which is exactly right:
 // they predate every format and all of them need rebuilding.

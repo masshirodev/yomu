@@ -77,8 +77,10 @@ export const POST: RequestHandler = async ({ request }) => {
 			glosses: entry?.senses?.[0]?.gloss ?? [],
 			sentence: line?.text ?? null,
 			speaker: line?.speaker ?? null,
-			annotated: tokens.length ? annotateSentence(tokens, furigana) : (line?.text ?? null),
-			wordSegments: furigana(w.surface, reading)
+			annotated: tokens.length
+				? annotateSentence(tokens, furigana, listNames())
+				: (line?.text ?? null),
+			wordSegments: furigana(w.lemma, reading)
 		};
 	});
 
@@ -133,7 +135,6 @@ export const POST: RequestHandler = async ({ request }) => {
 	for (const p of prepared) {
 		const card = composeCard({
 			lemma: p.word.lemma,
-			surface: p.word.surface,
 			reading: p.reading,
 			wordSegments: p.wordSegments,
 			glosses: p.glosses,

@@ -62,14 +62,42 @@ const KANA_ONLY = /^[\p{Script=Hiragana}\p{Script=Katakana}ー]+$/u;
  */
 export function annotateSentence(
 	tokens: readonly SentenceToken[],
-	align: (surface: string, reading: string | null) => FuriganaSegment[]
+	align: (surface: string, reading: string | null) => FuriganaSegment[],
+	names: readonly NameReading[] = []
 ): string {
-	return tokens
-		.map((t) => {
-			if (!HAN.test(t.surface) || !t.reading || t.reading === t.surface) return t.surface;
-			return bracketFurigana(align(t.surface, t.reading));
-		})
-		.join('');
+	// Names are matched across tokens before anything else, because the tokenizer
+	// gets them wrong and does so confidently. 桜羽 comes back as 桜(さくら) +
+	// 羽(わ), so the sentence was annotated 桜[さくら]羽[わ] -- a reading the
+	// reader would have learnt off a flashcard, and the wrong one. The name
+	// thread already knows it is さくらば, so that wins.
+	const known = names.filter((n) => n.reading).sort((a, b) => b.surface.length - a.surface.length);
+
+	const out: string[] = [];
+
+	for (let i = 0; i < tokens.length; i++) {
+		const match = known.find((n) => {
+			let span = '';
+			for (let j = i; j < tokens.length && span.length < n.surface.length; j++) {
+				span += tokens[j].surface;
+			}
+			return span === n.surface;
+		});
+
+		if (match) {
+			let span = '';
+			let j = i;
+			while (j < tokens.length && span.length < match.surface.length) span += tokens[j++].surface;
+			out.push(bracketFurigana(align(match.surface, match.reading)));
+			i = j - 1;
+			continue;
+		}
+
+		const t = tokens[i];
+		if (!HAN.test(t.surface) || !t.reading || t.reading === t.surface) out.push(t.surface);
+		else out.push(bracketFurigana(align(t.surface, t.reading)));
+	}
+
+	return out.join('');
 }
 
 export type CardDraft = {
@@ -82,17 +110,23 @@ export type CardDraft = {
 /**
  * Compose the card.
  *
- * The front stays the bare word. Putting the reading on the front would make
+ * The front is the bare dictionary form. Putting the reading on it would make
  * every card a reading exercise the answer to which is printed on it; the point
  * of recall is that you supply the reading yourself.
+ *
+ * The dictionary form rather than the form that happened to appear, because a
+ * card fronted 待っ or 気安く teaches an inflection as though it were a word,
+ * and its romaji comes from the dictionary anyway -- the first cards read
+ * `気安く  kiyasui`, which is two different words on one line. The inflected
+ * form is still there, in the sentence, where it belongs.
  *
  * The back is ordered by what you need first when you have just failed: what it
  * means, then how it sounds, then the sentence, then why. Lattice preserves the
  * line breaks and renders the brackets as ruby.
  */
 export function composeCard(input: {
+	/** The dictionary form. This is the front of the card. */
 	lemma: string;
-	surface: string;
 	reading: string | null;
 	wordSegments: FuriganaSegment[];
 	glosses: string[];
@@ -103,7 +137,7 @@ export function composeCard(input: {
 	tags?: string;
 }): CardDraft {
 	const {
-		surface,
+		lemma,
 		reading,
 		wordSegments,
 		glosses,
@@ -126,7 +160,7 @@ export function composeCard(input: {
 
 	const sound = [
 		bracketFurigana(wordSegments),
-		reading && reading !== surface ? toRomaji(reading) : toRomaji(surface)
+		reading && reading !== lemma ? toRomaji(reading) : toRomaji(lemma)
 	]
 		.filter(Boolean)
 		.join('  ');
@@ -143,8 +177,8 @@ export function composeCard(input: {
 	if (note) lines.push('', note);
 
 	return {
-		lemma: input.lemma,
-		front: surface,
+		lemma,
+		front: lemma,
 		back: lines
 			.join('\n')
 			.replace(/\n{3,}/gu, '\n\n')

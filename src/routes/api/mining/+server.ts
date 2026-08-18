@@ -114,9 +114,8 @@ export const POST: RequestHandler = async ({ request }) => {
 	const reading = entry?.kana?.[0] ?? null;
 	const card = composeCard({
 		lemma: candidate.lemma,
-		surface: candidate.surface,
 		reading,
-		wordSegments: furigana(candidate.surface, reading),
+		wordSegments: furigana(candidate.lemma, reading),
 		glosses: entry?.senses?.[0]?.gloss ?? [],
 		speaker: line?.speaker ?? null,
 		annotatedSentence: line?.text ?? null,
