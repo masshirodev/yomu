@@ -38,7 +38,6 @@
 	let failed = $state<string | null>(null);
 	let notice = $state<string | null>(null);
 	let mined = $state<Mined[]>([]);
-	let rebuilt = $state<string[]>([]);
 
 	const MAX_BATCH = 12;
 	const pending = $derived(
@@ -76,7 +75,7 @@
 		notice = null;
 
 		try {
-			const todo = mined.filter((m) => !rebuilt.includes(m.lemma)).slice(0, MAX_BATCH);
+			const todo = mined.slice(0, MAX_BATCH);
 			const items = await Promise.all(
 				todo.map(async (m) => ({ lemma: m.lemma, tokens: await tokensFor(m.sentence) }))
 			);
@@ -89,7 +88,8 @@
 			if (!res.ok) throw new Error(await res.text());
 
 			const d = await res.json();
-			rebuilt = [...rebuilt, ...d.rebuilt];
+			const done = new Set<string>(d.rebuilt);
+			mined = mined.filter((m) => !done.has(m.lemma));
 			if (d.error) notice = `Rebuilt from the dictionary only — ${d.error}`;
 			if (d.failed?.length) {
 				failed = d.failed
@@ -250,30 +250,23 @@
 	{/if}
 
 	{#if mined.length}
-		{@const left = mined.filter((m) => !rebuilt.includes(m.lemma)).length}
 		<section class="mt-4 rounded border border-neutral-800/80 px-3 py-2">
 			<div class="flex items-baseline justify-between gap-3">
 				<p class="font-mono text-[10px] text-neutral-500">
-					{mined.length} card{mined.length === 1 ? '' : 's'} already in Lattice.
-					{#if left}
-						{left} still on the old format, without readings.
-					{:else}
-						All rebuilt.
-					{/if}
+					{mined.length} card{mined.length === 1 ? '' : 's'} in Lattice predate readings.
 				</p>
-				{#if left}
-					<button
-						class="shrink-0 rounded border border-neutral-700 px-2 py-0.5 font-mono text-xs
-							text-neutral-400 hover:bg-neutral-800/50 disabled:opacity-40"
-						disabled={busy !== null}
-						onclick={rebuild}
-					>
-						{busy === 'rebuild' ? 'rebuilding…' : `rebuild ${Math.min(left, MAX_BATCH)}`}
-					</button>
-				{/if}
+				<button
+					class="shrink-0 rounded border border-neutral-700 px-2 py-0.5 font-mono text-xs
+						text-neutral-400 hover:bg-neutral-800/50 disabled:opacity-40"
+					disabled={busy !== null}
+					onclick={rebuild}
+				>
+					{busy === 'rebuild' ? 'rebuilding…' : `rebuild ${Math.min(mined.length, MAX_BATCH)}`}
+				</button>
 			</div>
 			<p class="mt-1 font-mono text-[10px] text-neutral-700">
-				Rewrites the card text in place. Review schedules are untouched.
+				Rewrites the card text in place. Review schedules are untouched. The section goes away once
+				every card is current.
 			</p>
 		</section>
 	{/if}

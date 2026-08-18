@@ -7,6 +7,7 @@ import {
 	lineById,
 	lineWithSeq,
 	listNames,
+	markCardFormat,
 	minedWords,
 	storyDigests
 } from '$lib/server/db';
@@ -144,6 +145,9 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		try {
 			await updateNote(p.word.noteId, card);
+			// Stamped only after Lattice confirms, so a card that failed to update
+			// stays on the list instead of being quietly marked done.
+			markCardFormat(p.word.lemma);
 			rebuilt.push(p.word.lemma);
 		} catch (e) {
 			failed.push({

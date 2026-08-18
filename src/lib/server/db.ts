@@ -145,6 +145,26 @@ CREATE TABLE IF NOT EXISTS mining_drafts (
 );
 `);
 
+/**
+ * Which card format a note was written in.
+ *
+ * Bumped when the composer starts producing something the old cards do not
+ * have, so "which cards are out of date" is a fact the server knows rather than
+ * something the page remembers. Without it a reload made every card look
+ * un-rebuilt, and a rebuild attempted while the provider was down would
+ * overwrite an enriched card with a dictionary-only one.
+ *
+ * 1: readings, romaji, annotated sentence, and meaning in context.
+ */
+export const CARD_FORMAT = 1;
+
+// Rows written before the column existed default to 0, which is exactly right:
+// they predate every format and all of them need rebuilding.
+const miningColumns = db.prepare('PRAGMA table_info(mining)').all() as { name: string }[];
+if (!miningColumns.some((c) => c.name === 'card_format')) {
+	db.exec('ALTER TABLE mining ADD COLUMN card_format INTEGER NOT NULL DEFAULT 0');
+}
+
 export function openSession(now = Date.now()): number {
 	const r = db.prepare('INSERT INTO sessions (started_at) VALUES (?)').run(now);
 	return Number(r.lastInsertRowid);
@@ -266,14 +286,22 @@ export function recordDecision(
 	lemma: string,
 	status: 'approved' | 'rejected',
 	noteId: string | null,
-	at = Date.now()
+	at = Date.now(),
+	cardFormat = CARD_FORMAT
 ): void {
 	db.prepare(
-		`INSERT INTO mining (lemma, status, decided_at, note_id) VALUES (?, ?, ?, ?)
+		`INSERT INTO mining (lemma, status, decided_at, note_id, card_format)
+		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT(lemma) DO UPDATE SET status = excluded.status,
 		                                  decided_at = excluded.decided_at,
-		                                  note_id = excluded.note_id`
-	).run(lemma, status, at, noteId);
+		                                  note_id = excluded.note_id,
+		                                  card_format = excluded.card_format`
+	).run(lemma, status, at, noteId, cardFormat);
+}
+
+/** Mark a note as rewritten in the current format. */
+export function markCardFormat(lemma: string, cardFormat = CARD_FORMAT): void {
+	db.prepare('UPDATE mining SET card_format = ? WHERE lemma = ?').run(cardFormat, lemma);
 }
 
 export function miningCounts(): { approved: number; rejected: number } {
@@ -568,11 +596,15 @@ export type MinedWord = {
 };
 
 /**
- * Words already sent to Lattice, with what is needed to rebuild their cards.
+ * Words whose Lattice card is older than the current format.
  *
  * `allLookups` deliberately hides these -- a mined word is not a candidate any
  * more -- so rebuilding needs its own read. The surface and line come from the
  * most recent lookup, the same ones the card was built from originally.
+ *
+ * Filtering on the format is what stops a rebuild from running twice: an
+ * already-current card is not offered, so a second pass while the provider is
+ * down cannot replace an enriched card with a dictionary-only one.
  */
 export function minedWords(): MinedWord[] {
 	const rows = db
@@ -586,10 +618,16 @@ export function minedWords(): MinedWord[] {
 			 JOIN events e ON e.type = 'lookup'
 			               AND json_extract(e.payload, '$.lemma') = m.lemma
 			 WHERE m.status = 'approved' AND m.note_id IS NOT NULL
+			   AND m.card_format < ?
 			 GROUP BY m.lemma
 			 ORDER BY m.decided_at ASC`
 		)
-		.all() as { lemma: string; noteId: string; payload: string; lineId: number | null }[];
+		.all(CARD_FORMAT) as {
+		lemma: string;
+		noteId: string;
+		payload: string;
+		lineId: number | null;
+	}[];
 
 	return rows.map((r) => {
 		let surface = r.lemma;
