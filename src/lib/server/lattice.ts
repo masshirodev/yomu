@@ -54,3 +54,29 @@ export async function createNote(note: NoteInput): Promise<string> {
 export function latticeConfigured(): boolean {
 	return Boolean(env.LATTICE_TOKEN);
 }
+
+/**
+ * Rewrite an existing note's text.
+ *
+ * Used to rebuild cards that were created before the card format could carry
+ * readings. Lattice's patch leaves the schedule beside the note untouched, so
+ * a card rebuilt half way through learning keeps everything it has earned --
+ * which is the only reason rebuilding is preferable to deleting and re-mining.
+ */
+export async function updateNote(id: string, note: NoteInput): Promise<void> {
+	const token = env.LATTICE_TOKEN;
+	if (!token) throw new LatticeError('LATTICE_TOKEN is not configured');
+
+	const res = await fetch(`${BASE}/api/flashcards/notes/${id}`, {
+		method: 'PATCH',
+		headers: {
+			'content-type': 'application/json',
+			authorization: `Bearer ${token}`
+		},
+		body: JSON.stringify({ front: note.front, back: note.back, tags: note.tags })
+	});
+
+	if (!res.ok) {
+		throw new LatticeError(`lattice rejected the update (${res.status}): ${await res.text()}`);
+	}
+}

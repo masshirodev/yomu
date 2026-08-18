@@ -559,3 +559,46 @@ export function draftByLemma(lemma: string): DraftRow | null {
 export function deleteDraft(lemma: string): void {
 	db.prepare('DELETE FROM mining_drafts WHERE lemma = ?').run(lemma);
 }
+
+export type MinedWord = {
+	lemma: string;
+	noteId: string;
+	surface: string;
+	lineId: number | null;
+};
+
+/**
+ * Words already sent to Lattice, with what is needed to rebuild their cards.
+ *
+ * `allLookups` deliberately hides these -- a mined word is not a candidate any
+ * more -- so rebuilding needs its own read. The surface and line come from the
+ * most recent lookup, the same ones the card was built from originally.
+ */
+export function minedWords(): MinedWord[] {
+	const rows = db
+		.prepare(
+			// MAX(e.at) with bare columns is SQLite's documented way of picking the
+			// whole row that carries the maximum -- the most recent lookup, which is
+			// the one the card was built from.
+			`SELECT m.lemma AS lemma, m.note_id AS noteId, e.payload AS payload,
+			        e.line_id AS lineId, MAX(e.at) AS at
+			 FROM mining m
+			 JOIN events e ON e.type = 'lookup'
+			               AND json_extract(e.payload, '$.lemma') = m.lemma
+			 WHERE m.status = 'approved' AND m.note_id IS NOT NULL
+			 GROUP BY m.lemma
+			 ORDER BY m.decided_at ASC`
+		)
+		.all() as { lemma: string; noteId: string; payload: string; lineId: number | null }[];
+
+	return rows.map((r) => {
+		let surface = r.lemma;
+		try {
+			const p = JSON.parse(r.payload);
+			if (typeof p.surface === 'string' && p.surface) surface = p.surface;
+		} catch {
+			// Keep the lemma. A malformed payload must not drop the card.
+		}
+		return { lemma: r.lemma, noteId: r.noteId, surface, lineId: r.lineId };
+	});
+}

@@ -18,6 +18,14 @@
 
 	type Draft = { lemma: string; front: string; back: string; tags: string };
 
+	type Mined = {
+		lemma: string;
+		noteId: string;
+		surface: string;
+		sentence: string | null;
+		speaker: string | null;
+	};
+
 	type Props = { onclose: () => void };
 	let { onclose }: Props = $props();
 
@@ -29,6 +37,8 @@
 	let busy = $state<string | null>(null);
 	let failed = $state<string | null>(null);
 	let notice = $state<string | null>(null);
+	let mined = $state<Mined[]>([]);
+	let rebuilt = $state<string[]>([]);
 
 	const MAX_BATCH = 12;
 	const pending = $derived(
@@ -41,6 +51,56 @@
 		drafts = d.drafts ?? [];
 		counts = d.counts;
 		latticeReady = d.latticeReady;
+
+		const r = await (await fetch('/api/mining/rebuild')).json();
+		mined = r.words ?? [];
+	}
+
+	/** Tokenise a sentence for the server, which has no tokenizer of its own. */
+	async function tokensFor(sentence: string | null) {
+		if (!sentence) return [];
+		return (await tokenize(sentence)).map((t) => ({ surface: t.surface, reading: t.reading }));
+	}
+
+	/**
+	 * Rebuild cards that were sent before the format could carry readings.
+	 *
+	 * Done in batches for the same reason enrichment is: one provider call for
+	 * the group. Rewriting a note leaves its schedule alone, so a card halfway
+	 * through learning keeps every review it has earned.
+	 */
+	async function rebuild() {
+		if (!mined.length || busy) return;
+		busy = 'rebuild';
+		failed = null;
+		notice = null;
+
+		try {
+			const todo = mined.filter((m) => !rebuilt.includes(m.lemma)).slice(0, MAX_BATCH);
+			const items = await Promise.all(
+				todo.map(async (m) => ({ lemma: m.lemma, tokens: await tokensFor(m.sentence) }))
+			);
+
+			const res = await fetch('/api/mining/rebuild', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ items })
+			});
+			if (!res.ok) throw new Error(await res.text());
+
+			const d = await res.json();
+			rebuilt = [...rebuilt, ...d.rebuilt];
+			if (d.error) notice = `Rebuilt from the dictionary only — ${d.error}`;
+			if (d.failed?.length) {
+				failed = d.failed
+					.map((f: { lemma: string; error: string }) => `${f.lemma}: ${f.error}`)
+					.join(' · ');
+			}
+		} catch (e) {
+			failed = String(e);
+		} finally {
+			busy = null;
+		}
 	}
 
 	function toggle(lemma: string) {
@@ -65,15 +125,7 @@
 		try {
 			const chosen = (candidates ?? []).filter((c) => selected.has(c.lemma));
 			const items = await Promise.all(
-				chosen.map(async (c) => ({
-					lemma: c.lemma,
-					tokens: c.sentence
-						? (await tokenize(c.sentence)).map((t) => ({
-								surface: t.surface,
-								reading: t.reading
-							}))
-						: []
-				}))
+				chosen.map(async (c) => ({ lemma: c.lemma, tokens: await tokensFor(c.sentence) }))
 			);
 
 			const res = await fetch('/api/mining/enrich', {
@@ -195,6 +247,35 @@
 	{/if}
 	{#if notice}
 		<p class="mt-2 font-mono text-xs text-amber-600/80">{notice}</p>
+	{/if}
+
+	{#if mined.length}
+		{@const left = mined.filter((m) => !rebuilt.includes(m.lemma)).length}
+		<section class="mt-4 rounded border border-neutral-800/80 px-3 py-2">
+			<div class="flex items-baseline justify-between gap-3">
+				<p class="font-mono text-[10px] text-neutral-500">
+					{mined.length} card{mined.length === 1 ? '' : 's'} already in Lattice.
+					{#if left}
+						{left} still on the old format, without readings.
+					{:else}
+						All rebuilt.
+					{/if}
+				</p>
+				{#if left}
+					<button
+						class="shrink-0 rounded border border-neutral-700 px-2 py-0.5 font-mono text-xs
+							text-neutral-400 hover:bg-neutral-800/50 disabled:opacity-40"
+						disabled={busy !== null}
+						onclick={rebuild}
+					>
+						{busy === 'rebuild' ? 'rebuilding…' : `rebuild ${Math.min(left, MAX_BATCH)}`}
+					</button>
+				{/if}
+			</div>
+			<p class="mt-1 font-mono text-[10px] text-neutral-700">
+				Rewrites the card text in place. Review schedules are untouched.
+			</p>
+		</section>
 	{/if}
 
 	{#if drafts.length}
