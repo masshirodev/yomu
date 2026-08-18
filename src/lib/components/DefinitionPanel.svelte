@@ -69,11 +69,11 @@
 		</p>
 		<div class="flex shrink-0 gap-3 font-mono text-xs">
 			{#if onback}
-				<!-- Returns to the explanation this word was clicked from. The panel
-				     behind stays mounted, so nothing is re-fetched or re-generated. -->
-				<button class="text-sky-500/80 hover:text-sky-400" onclick={onback}>
-					← back to explanation
-				</button>
+				<!-- Returns to whichever panel this word was clicked from -- an
+				     explanation or a check. That panel stays mounted behind this one,
+				     so nothing is re-fetched, re-generated, or in the case of a
+				     check, retyped. -->
+				<button class="text-sky-500/80 hover:text-sky-400" onclick={onback}> ← back </button>
 			{/if}
 			<button class="text-neutral-600 hover:text-neutral-400" onclick={onclose}>close</button>
 		</div>

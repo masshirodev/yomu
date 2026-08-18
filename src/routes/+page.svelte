@@ -231,7 +231,14 @@
 	</div>
 
 	{#if checking}
-		<AttemptPanel lineId={checking.lineId} text={checking.text} onclose={() => (checking = null)} />
+		<div class:hidden={selected !== null}>
+			<AttemptPanel
+				lineId={checking.lineId}
+				text={checking.text}
+				onclose={() => (checking = null)}
+				onlookup={(token) => (selected = { token, lineId: checking!.lineId })}
+			/>
+		</div>
 	{/if}
 
 	{#if phrase && !explaining && !selected && !checking}
@@ -275,10 +282,11 @@
 	{#if selected}
 		<DefinitionPanel
 			token={selected.token}
-			onback={explaining ? () => (selected = null) : null}
+			onback={explaining || checking ? () => (selected = null) : null}
 			onclose={() => {
 				selected = null;
 				explaining = null;
+				checking = null;
 			}}
 		/>
 	{:else if showMining}

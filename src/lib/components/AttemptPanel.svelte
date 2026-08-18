@@ -1,4 +1,7 @@
 <script lang="ts">
+	import MixedText from './MixedText.svelte';
+	import type { Token } from '$lib/tokenize';
+
 	type Verdict = {
 		gist: 'correct' | 'partial' | 'missed';
 		got: string[];
@@ -6,8 +9,13 @@
 		note: string;
 	};
 
-	type Props = { lineId: number; text: string; onclose: () => void };
-	let { lineId, text, onclose }: Props = $props();
+	type Props = {
+		lineId: number;
+		text: string;
+		onclose: () => void;
+		onlookup: (token: Token) => void;
+	};
+	let { lineId, text, onclose, onlookup }: Props = $props();
 
 	let guess = $state('');
 	let submitted = $state<string | null>(null);
@@ -73,7 +81,7 @@
 
 <aside class="max-h-[55vh] overflow-y-auto border-t border-neutral-700 bg-neutral-900 px-6 py-5">
 	<div class="flex items-baseline justify-between gap-4">
-		<p class="font-jp text-lg leading-relaxed text-neutral-300">{text}</p>
+		<p class="text-lg leading-relaxed text-neutral-300"><MixedText {text} {onlookup} /></p>
 		<button
 			class="shrink-0 font-mono text-xs text-neutral-600 hover:text-neutral-400"
 			onclick={onclose}
@@ -123,7 +131,9 @@
 		{:else if verdict}
 			<div class="mt-4 rounded border px-3 py-2 {TONE[verdict.gist]}">
 				<p class="font-mono text-xs tracking-wider uppercase">{verdict.gist}</p>
-				<p class="mt-1 text-base leading-relaxed text-neutral-200">{verdict.note}</p>
+				<p class="mt-1 text-base leading-relaxed text-neutral-200">
+					<MixedText text={verdict.note} {onlookup} />
+				</p>
 			</div>
 
 			{#if verdict.got.length}
@@ -131,7 +141,9 @@
 					<p class="font-mono text-xs tracking-wider text-emerald-600/80 uppercase">got</p>
 					<ul class="mt-1 space-y-1">
 						{#each verdict.got as g, i (i)}
-							<li class="text-base leading-relaxed text-neutral-300">{g}</li>
+							<li class="text-base leading-relaxed text-neutral-300">
+								<MixedText text={g} {onlookup} />
+							</li>
 						{/each}
 					</ul>
 				</div>
@@ -142,7 +154,9 @@
 					<p class="font-mono text-xs tracking-wider text-rose-600/80 uppercase">missed</p>
 					<ul class="mt-1 space-y-1">
 						{#each verdict.missed as m, i (i)}
-							<li class="text-base leading-relaxed text-neutral-300">{m}</li>
+							<li class="text-base leading-relaxed text-neutral-300">
+								<MixedText text={m} {onlookup} />
+							</li>
 						{/each}
 					</ul>
 				</div>
