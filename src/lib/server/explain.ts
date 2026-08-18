@@ -92,6 +92,16 @@ export type Explanation = {
 	grammar: { point: string; explanation: string }[];
 	voice: string | null;
 	reference: string | null;
+	/**
+	 * The line read structurally, in Japanese order.
+	 *
+	 * Sits with the translation rather than with the grammar notes, and behind
+	 * the same gate, because it gives the meaning away just as completely. What
+	 * it adds is *how* the line gets there -- 嫌悪の色を宿す arrives in English as
+	 * 'harboured a deep-rooted loathing', which hides that 色 is a tinge and 宿す
+	 * is to house. That is the half that transfers to the next line.
+	 */
+	literal: string;
 	translation: string;
 };
 
@@ -108,9 +118,10 @@ const SCHEMA = {
 		},
 		voice: { type: ['string', 'null'] },
 		reference: { type: ['string', 'null'] },
+		literal: { type: 'string' },
 		translation: { type: 'string' }
 	},
-	required: ['grammar', 'voice', 'reference', 'translation']
+	required: ['grammar', 'voice', 'reference', 'literal', 'translation']
 };
 
 /**
@@ -133,7 +144,9 @@ export function buildPrompt(line: string, ctx: BuiltContext, span?: string | nul
 		`\nFields: "grammar" is the constructions worth explaining here, most important first.`,
 		`"voice" is register or character-voice worth noting, or null.`,
 		`"reference" resolves any pronoun or referent using ONLY the context above, or null if it has not been established.`,
-		`"translation" is a plain English rendering — it is shown only if the reader deliberately asks, so never hedge it into the other fields.`,
+		`"literal" is the line read structurally, following Japanese order and keeping each word's own sense, so the reader can see how the parts add up. Where a word is figurative, use its figurative sense rather than its concrete one — 色 in 嫌悪の色 is a tinge, not a colour — because a gloss that is literal but wrong teaches a wrong analysis.`,
+		`"translation" is a plain English rendering.`,
+		`Both "literal" and "translation" are shown only if the reader deliberately asks, so never hedge either of them into the other fields.`,
 		`\nReturn only a JSON object matching this schema exactly:\n${JSON.stringify(SCHEMA)}`
 	].join('\n');
 }

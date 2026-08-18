@@ -7,6 +7,7 @@
 		grammar: { point: string; explanation: string }[];
 		voice: string | null;
 		reference: string | null;
+		literal: string;
 		translation: string;
 	};
 
@@ -104,14 +105,25 @@
 
 		<div class="mt-4 border-t border-neutral-800/60 pt-3">
 			{#if showTranslation}
-				<p class="text-base leading-relaxed text-neutral-300">{explanation.translation}</p>
+				<!-- Structure first. You have just read the line; the gloss shows how it
+					parses, and the natural reading shows what that adds up to. The other
+					order hands over the answer before the work. -->
+				{#if explanation.literal}
+					<p class="text-base leading-relaxed text-neutral-400">
+						<span class="font-mono text-xs tracking-wider text-neutral-600 uppercase">lit.</span>
+						<span class="ml-2"><MixedText text={explanation.literal} {onlookup} /></span>
+					</p>
+				{/if}
+				<p class="mt-1 text-base leading-relaxed text-neutral-300">
+					<MixedText text={explanation.translation} {onlookup} />
+				</p>
 			{:else}
 				<button
 					class="rounded border border-neutral-800 px-2 py-1 font-mono text-xs text-neutral-500
 						hover:bg-neutral-800/50 hover:text-neutral-300"
 					onclick={reveal}
 				>
-					show English translation
+					show English
 				</button>
 				<p class="mt-2 font-mono text-xs text-neutral-500">
 					Deliberately a second click, and logged. Reading a VN through the translation is how this

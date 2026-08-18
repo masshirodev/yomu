@@ -36,10 +36,10 @@ describe('buildPrompt', () => {
 		expect(buildPrompt('あいつがやった。', ctx())).toMatch(/ONLY the context/);
 	});
 
-	it('keeps the translation out of the other fields', () => {
-		// Translation is gated behind a deliberate click in the reader; if it leaks
-		// into the grammar notes the gate is pointless.
-		expect(buildPrompt('x', ctx())).toMatch(/never hedge it into the other fields/);
+	it('keeps the gated fields out of the ungated ones', () => {
+		// Translation and the literal gloss are both behind a deliberate click in
+		// the reader; if either leaks into the grammar notes the gate is pointless.
+		expect(buildPrompt('x', ctx())).toMatch(/never hedge either of them into the other fields/);
 	});
 });
 
@@ -154,5 +154,54 @@ describe('extractJson salvage', () => {
 		// "no JSON object found" with no sample is undiagnosable after the fact,
 		// which is exactly how the first real failure arrived.
 		expect(() => extractJson('provider exploded, sorry', 'gist')).toThrow(/provider exploded/);
+	});
+});
+
+describe('the literal gloss in explanations', () => {
+	const ctx = buildContext({ currentSeq: 100, digests: [], facts: [], lines: [] });
+
+	it('asks for a structural reading alongside the natural one', () => {
+		const p = buildPrompt('吐き捨てるヒロの瞳は、根深い嫌悪の色を宿していた。', ctx);
+		expect(p).toContain('"literal"');
+		expect(p).toMatch(/following Japanese order/);
+	});
+
+	it('names the way a literal gloss can do harm', () => {
+		// A gloss that is literal but wrong teaches a wrong analysis. Rendering 色
+		// as "colour" here would be exactly that.
+		const p = buildPrompt('嫌悪の色を宿していた。', ctx);
+		expect(p).toMatch(/figurative sense rather than its concrete one/);
+		expect(p).toMatch(/teaches a wrong analysis/);
+	});
+
+	it('keeps both behind the reveal', () => {
+		// The gloss gives the meaning away as completely as the translation does,
+		// so it sits behind the same gate rather than beside the grammar notes.
+		const p = buildPrompt('嫌悪の色を宿していた。', ctx);
+		expect(p).toMatch(
+			/Both "literal" and "translation" are shown only if the reader deliberately asks/
+		);
+	});
+
+	it('retires cached explanations that predate the field', () => {
+		// The cache is keyed on the prompt, so changing the prompt changes the key
+		// and old entries are simply never looked up again. That is the whole
+		// migration: an explanation cached without a gloss can never be served as
+		// though it had one.
+		const before = 'old prompt text';
+		expect(cacheKey(before)).not.toBe(cacheKey(buildPrompt('嫌悪の色', ctx)));
+		expect(cacheKey(buildPrompt('嫌悪の色', ctx))).toBe(cacheKey(buildPrompt('嫌悪の色', ctx)));
+	});
+
+	it('accepts a provider reply carrying the gloss', () => {
+		const out = JSON.stringify({
+			grammar: [],
+			voice: null,
+			reference: null,
+			literal: 'The eyes were housing the tinge of a deep-rooted loathing.',
+			translation: "Hiro's eyes harboured a deep-rooted loathing."
+		});
+		const parsed = extractJson(out) as { literal: string };
+		expect(parsed.literal).toContain('tinge');
 	});
 });
