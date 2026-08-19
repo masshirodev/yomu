@@ -190,10 +190,19 @@
 	     bottom. Opening or closing a panel resizes this container, and without
 	     the anchor every line slides -- which is the jump you get when clicking a
 	     kana. It also makes "stay on the newest line" free, with no scroll
-	     patching after each render. -->
+	     patching after each render.
+
+	     Never put justify-content on this element. It was justify-end for a
+	     while, to keep a short list pinned to the top of the screen, and that
+	     silently broke scrolling: a flex container whose content overflows puts
+	     the excess past the axis start, and justify-content moves that start out
+	     of the scrollable region, so the overflow cannot be reached at all. It
+	     looked fine throughout development because three test lines never
+	     overflow -- it only failed once there was enough text to actually scroll,
+	     which is the exact moment scrolling starts to matter. -->
 	<div
 		bind:this={viewport}
-		class="flex flex-1 flex-col-reverse justify-end gap-5 overflow-y-auto px-6 py-8"
+		class="flex flex-1 flex-col-reverse gap-5 overflow-y-auto px-6 py-8"
 		onmouseup={onSelection}
 		ontouchend={onSelection}
 		role="document"
