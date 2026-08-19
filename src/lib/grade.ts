@@ -23,6 +23,24 @@ export type Verdict = {
 	missed: string[];
 	/** One sentence, addressed to the reader. */
 	note: string;
+	/**
+	 * The line read structurally, in Japanese order.
+	 *
+	 * More useful here than anywhere else it appears: you have just tried to
+	 * parse this sentence yourself and been told which parts you got wrong, so
+	 * the gloss shows exactly where your reading and the sentence diverged.
+	 */
+	literal: string;
+	/**
+	 * What the line actually says.
+	 *
+	 * Not gated, unlike the translation in the explain panel. That gate exists so
+	 * the line is attempted before English is seen, and grading *is* that attempt,
+	 * already committed and unchangeable. Withholding the answer after the answer
+	 * has been given is not protecting anything -- it is marking the exam and
+	 * refusing to show the paper.
+	 */
+	translation: string;
 };
 
 const SCHEMA = {
@@ -31,9 +49,11 @@ const SCHEMA = {
 		gist: { type: 'string', enum: ['correct', 'partial', 'missed'] },
 		got: { type: 'array', items: { type: 'string' } },
 		missed: { type: 'array', items: { type: 'string' } },
-		note: { type: 'string' }
+		note: { type: 'string' },
+		literal: { type: 'string' },
+		translation: { type: 'string' }
 	},
-	required: ['gist', 'got', 'missed', 'note']
+	required: ['gist', 'got', 'missed', 'note', 'literal', 'translation']
 };
 
 /**
@@ -55,6 +75,8 @@ Rules:
 - "missed" names what they missed or misread, and says what it actually means. Empty if nothing.
 - "note" is one sentence addressed to them directly. Encouraging when they did well, concrete when they did not. Never generic praise.
 - If they wrote something with no relation to the line, or clearly did not know, say so plainly rather than inventing partial credit.
+- "translation" is what the line actually says, in natural English. Always give it, whatever they scored — it is the answer to the question they just attempted.
+- "literal" is the same line read structurally, following Japanese order and keeping each word's own sense, so they can see where their reading and the sentence parted company. Where a word is figurative, use its figurative sense rather than its concrete one — 色 in 嫌悪の色 is a tinge, not a colour — because a gloss that is literal but wrong teaches a wrong analysis.
 - When referring to what they wrote, paraphrase it or wrap it in single quotes. Never use double quotes inside any field: the reply is parsed as JSON and a raw double quote inside a string breaks it.
 
 Spoiler rules, which override the above:

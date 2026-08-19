@@ -7,6 +7,10 @@
 		got: string[];
 		missed: string[];
 		note: string;
+		// Optional because attempts graded before these existed are stored without
+		// them, and a retry is the only thing that fills them in.
+		literal?: string;
+		translation?: string;
 	};
 
 	type Props = {
@@ -149,6 +153,23 @@
 					<MixedText text={verdict.note} {onlookup} />
 				</p>
 			</div>
+
+			{#if verdict.translation}
+				<div class="mt-3 rounded border border-neutral-800 bg-neutral-950/50 px-3 py-2">
+					<p class="font-mono text-xs tracking-wider text-neutral-500 uppercase">the line</p>
+					{#if verdict.literal}
+						<p class="mt-1 text-sm leading-relaxed text-neutral-400">
+							<span class="font-mono text-[10px] tracking-wider text-neutral-600 uppercase"
+								>lit.</span
+							>
+							<span class="ml-1"><MixedText text={verdict.literal} {onlookup} /></span>
+						</p>
+					{/if}
+					<p class="mt-1 text-base leading-relaxed text-neutral-200">
+						<MixedText text={verdict.translation} {onlookup} />
+					</p>
+				</div>
+			{/if}
 
 			{#if verdict.got.length}
 				<div class="mt-3">

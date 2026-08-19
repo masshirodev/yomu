@@ -72,3 +72,41 @@ describe('GRADER_RULES', () => {
 		expect(GRADER_RULES).toMatch(/Never generic praise/);
 	});
 });
+
+describe('the answer, after the answer has been given', () => {
+	it('asks for the translation whatever the reader scored', () => {
+		// Grading is the committed attempt the translation gate exists to protect.
+		// Once it is committed, withholding the answer is marking the exam and
+		// refusing to show the paper.
+		expect(GRADER_RULES).toMatch(/Always give it, whatever they scored/);
+		expect(prompt()).toContain('"translation"');
+	});
+
+	it('asks for the structural gloss too', () => {
+		// Most useful here of anywhere: they have just tried to parse this sentence
+		// themselves and been told which parts they got wrong.
+		expect(GRADER_RULES).toMatch(/where their reading and the sentence parted company/);
+		expect(prompt()).toContain('"literal"');
+	});
+
+	it('keeps the guard against a literal gloss that is literally wrong', () => {
+		expect(GRADER_RULES).toMatch(/figurative sense rather than its concrete one/);
+		expect(GRADER_RULES).toMatch(/teaches a wrong analysis/);
+	});
+
+	it('still refuses to reach past the reader to produce it', () => {
+		// The translation is new; the spoiler boundary is not negotiable because of
+		// it. A line is translated from what has been read, not from what it will
+		// later turn out to mean.
+		const p = prompt({
+			ctx: buildContext({
+				currentSeq: 50,
+				digests: [],
+				facts: [{ name: '真犯人', fact: 'is the culprit', kind: 'fact', learnedAt: 900 }],
+				lines: []
+			})
+		});
+		expect(p).not.toContain('is the culprit');
+		expect(p).toMatch(/NEVER refer to anything later/);
+	});
+});
