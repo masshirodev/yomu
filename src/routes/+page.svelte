@@ -21,6 +21,12 @@
 
 	let lines = $state<StoredLine[]>([]);
 	let connected = $state(false);
+	type Work = { slug: string; title: string; lines: number };
+	let works = $state<Work[]>([]);
+	let work = $state<{ slug: string; title: string } | null>(null);
+	// Which VN the reader is showing. Null means "whatever was read most
+	// recently", which is the right answer whenever there is only one.
+	let chosen = $state<string | null>(null);
 	let dictReady = $state(false);
 	let dictError = $state<string | null>(null);
 	let furiganaMode = $state<'none' | 'narration' | 'all'>('narration');
@@ -39,6 +45,20 @@
 
 	const narrationCount = $derived(lines.filter((l) => l.kind === 'narration').length);
 
+	/**
+	 * Show a different VN.
+	 *
+	 * A full reload rather than re-plumbing the stream in place: the page holds
+	 * lines, names, the open panels and a session summary, all of which belong to
+	 * the work being left. Reloading throws every one of them away at once, which
+	 * is exactly what is wanted and is impossible to get subtly wrong.
+	 */
+	function switchWork(slug: string) {
+		const url = new URL(window.location.href);
+		url.searchParams.set('work', slug);
+		window.location.href = url.toString();
+	}
+
 	onMount(() => {
 		// ~18MB of dictionary. Kicked off here rather than per line so the first
 		// line to arrive is not the one that pays for it.
@@ -51,12 +71,25 @@
 		// is that the numbers are never stale enough to mislead.
 		const poll = setInterval(refreshSession, 60_000);
 
-		fetch('/api/names')
+		fetch('/api/works')
 			.then((r) => r.json())
-			.then((d) => (names = d.names))
+			.then((d) => (works = d.works))
 			.catch(() => {});
 
-		const es = new EventSource('/api/stream');
+		chosen = new URLSearchParams(window.location.search).get('work');
+		const es = new EventSource(
+			chosen ? `/api/stream?work=${encodeURIComponent(chosen)}` : '/api/stream'
+		);
+
+		es.addEventListener('work', (e) => {
+			work = JSON.parse((e as MessageEvent).data);
+			// Names are per work, so they are fetched once the stream has said which
+			// one this is rather than guessed at alongside it.
+			fetch(`/api/names?work=${encodeURIComponent(work!.slug)}`)
+				.then((r) => r.json())
+				.then((d) => (names = d.names))
+				.catch(() => {});
+		});
 
 		es.addEventListener('backlog', (e) => {
 			lines = JSON.parse((e as MessageEvent).data);
@@ -133,7 +166,27 @@
 
 <div class="mx-auto flex h-screen max-w-3xl flex-col">
 	<header class="flex items-center justify-between border-b border-neutral-800 px-6 py-3">
-		<h1 class="font-mono text-sm tracking-widest text-neutral-500 uppercase">yomu</h1>
+		<div class="flex items-baseline gap-3">
+			<h1 class="font-mono text-sm tracking-widest text-neutral-500 uppercase">yomu</h1>
+			{#if work}
+				<!-- Only a picker once there is something to pick between. With one VN
+					this is a label, which is all it should ever have been. -->
+				{#if works.length > 1}
+					<select
+						class="max-w-52 truncate rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5
+							font-mono text-xs text-neutral-400 hover:text-neutral-200"
+						value={work.slug}
+						onchange={(e) => switchWork(e.currentTarget.value)}
+					>
+						{#each works as w (w.slug)}
+							<option value={w.slug}>{w.title} · {w.lines}</option>
+						{/each}
+					</select>
+				{:else}
+					<span class="font-jp max-w-52 truncate text-xs text-neutral-600">{work.title}</span>
+				{/if}
+			{/if}
+		</div>
 
 		<div class="flex items-center gap-4 font-mono text-xs text-neutral-600">
 			<div class="flex overflow-hidden rounded border border-neutral-800">

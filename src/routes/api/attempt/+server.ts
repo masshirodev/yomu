@@ -9,7 +9,8 @@ import {
 	lineWithSeq,
 	recordVerdict,
 	saveAttempt,
-	storyDigests
+	storyDigests,
+	workForSession
 } from '$lib/server/db';
 import { buildContext } from '$lib/context';
 import { buildGradePrompt, type Verdict } from '$lib/grade';
@@ -52,10 +53,16 @@ export const POST: RequestHandler = async ({ request }) => {
 	const line = lineWithSeq(lineId);
 	if (!line) error(404, 'no such line');
 
+	// The work follows the line, not the reader's current one. Explaining an old
+	// line must use its own story's context, whichever VN is open now.
+	const work = workForSession(line.session_id);
+
 	// Stored before grading is attempted. The guess is the irreplaceable half:
 	// it is the only record of what was understood at this point in the story,
 	// and a grader that is offline, slow or later changed must never cost it.
-	const id = existing ? existing.id : saveAttempt(lineId, currentSession(), guess);
+	const id = existing
+		? existing.id
+		: saveAttempt(lineId, currentSession(workForSession(line.session_id)), guess);
 
 	if (!explainConfigured()) {
 		return json({ id, guess, verdict: null, error: 'no grader configured' });
@@ -65,9 +72,9 @@ export const POST: RequestHandler = async ({ request }) => {
 	// reader would spoil the story from inside a study feature.
 	const ctx = buildContext({
 		currentSeq: line.seq,
-		digests: storyDigests(),
-		facts: characterFacts(),
-		lines: contextLines(line.session_id)
+		digests: storyDigests(work),
+		facts: characterFacts(work),
+		lines: contextLines(work)
 	});
 
 	try {

@@ -1,5 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { resolveWork } from '$lib/server/work';
 import { currentSession, recordEvent } from '$lib/server/db';
 
 /**
@@ -17,7 +18,16 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (!body || !TYPES.has(body.type)) error(400, 'unknown event type');
 
 	const at = Number.isFinite(body.at) ? Number(body.at) : Date.now();
-	recordEvent(currentSession(at), body.lineId ?? null, body.type, body.payload ?? null, at);
+	// Scoped through the session, which belongs to a work -- so a lookup logged
+	// while reading one VN cannot rank a word in another one's mining queue.
+	const work = resolveWork(body.work);
+	recordEvent(
+		currentSession(work.id, at),
+		body.lineId ?? null,
+		body.type,
+		body.payload ?? null,
+		at
+	);
 
 	return json({ ok: true });
 };

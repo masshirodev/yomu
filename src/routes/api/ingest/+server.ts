@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { parseEvent, type SourceKind } from '$lib/parse';
 import { appendLines, currentSession, listNames, noteName } from '$lib/server/db';
+import { workForIngest } from '$lib/server/work';
 import { publish } from '$lib/server/bus';
 import { saveState, stateFor } from '$lib/server/parse-state';
 import { requireIngestToken } from '$lib/server/auth';
@@ -27,7 +28,10 @@ export const POST: RequestHandler = async ({ request }) => {
 	// point of timestamping at the event is that later hops add latency.
 	const ts = Number.isFinite(body.ts) ? Number(body.ts) : Date.now();
 
-	const sessionId = currentSession(ts);
+	// The work the bridge says it is playing. Unknown slugs create a work rather
+	// than erroring: starting a new VN should not need a setup step first.
+	const work = workForIngest(body?.work, body?.title);
+	const sessionId = currentSession(work.id, ts);
 
 	// A speaker name arriving as its own event is held until the line it belongs
 	// to shows up, so attribution survives name and dialogue being on separate
@@ -35,7 +39,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Known names let the parser spot third-person narration about a character
 	// (ヒロは…) and refuse to attribute it to them, which is how narration was
 	// getting labelled as dialogue.
-	const known = listNames().map((n) => n.surface);
+	const known = listNames(work.id).map((n) => n.surface);
 
 	const { lines, state } = parseEvent(
 		{ source, text: body.text, ts, thread: body.thread },
@@ -48,13 +52,13 @@ export const POST: RequestHandler = async ({ request }) => {
 	// does not know. Collecting them here means the cast assembles itself as the
 	// story introduces it, and only the readings ever need typing.
 	for (const line of lines) {
-		if (line.speaker) noteName(line.speaker, ts);
+		if (line.speaker) noteName(work.id, line.speaker, ts);
 	}
 
 	if (lines.length === 0) return json({ accepted: 0 });
 
 	const stored = appendLines(sessionId, source, lines, ts);
-	publish(stored);
+	publish(work.id, stored);
 
 	return json({ accepted: stored.length });
 };

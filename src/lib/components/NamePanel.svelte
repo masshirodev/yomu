@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { withWork } from '$lib/work';
 	import { toRomaji } from '$lib/romaji';
 
 	type NameRow = { surface: string; reading: string | null; seen_count: number };
@@ -14,7 +15,7 @@
 			const res = await fetch('/api/names', {
 				method: 'PATCH',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ surface, reading })
+				body: JSON.stringify(withWork({ surface, reading }))
 			});
 			if (res.ok) onchange((await res.json()).names);
 		} finally {

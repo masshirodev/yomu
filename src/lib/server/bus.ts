@@ -1,4 +1,4 @@
-import type { StoredLine } from './db';
+import type { StoredLine, WorkId } from './db';
 
 /**
  * In-process fan-out from the ingest endpoint to connected readers.
@@ -9,16 +9,25 @@ import type { StoredLine } from './db';
  */
 type Listener = (lines: StoredLine[]) => void;
 
-const listeners = new Set<Listener>();
+/**
+ * Subscriptions carry the work they are watching.
+ *
+ * Without it a line from one visual novel is pushed into the reader showing
+ * another -- the fan-out has no idea what it is relaying, and a reader with two
+ * stories open would interleave them.
+ */
+const listeners = new Set<{ workId: WorkId; fn: Listener }>();
 
-export function subscribe(fn: Listener): () => void {
-	listeners.add(fn);
-	return () => listeners.delete(fn);
+export function subscribe(workId: WorkId, fn: Listener): () => void {
+	const entry = { workId, fn };
+	listeners.add(entry);
+	return () => listeners.delete(entry);
 }
 
-export function publish(lines: StoredLine[]): void {
+export function publish(workId: WorkId, lines: StoredLine[]): void {
 	if (lines.length === 0) return;
-	for (const fn of listeners) {
+	for (const { workId: watching, fn } of listeners) {
+		if (watching !== workId) continue;
 		try {
 			fn(lines);
 		} catch {

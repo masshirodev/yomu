@@ -7,6 +7,9 @@
 #
 #   YOMU_URL=http://100.127.94.72:42139 YOMU_INGEST_TOKEN=... ./yomu-send.sh
 #
+# For a second visual novel, set both the work and the process it gates on:
+#   YOMU_WORK=someothervn YOMU_GAME_PROCESS=someother.exe ./yomu-send.sh
+#
 # Use the TAILSCALE address, not yomu.masshiro.pro: the ISP here blocks the
 # VPS's public address from home, so the public route times out even though the
 # service is healthy. The tailnet does not depend on the ISP and is a good deal
@@ -62,6 +65,13 @@ echo "Ctrl-C to stop."
 # which then landed in the line store. Two independent gates guard that now:
 # this one, and a Japanese-content check.
 export YOMU_GAME_PROCESS="${YOMU_GAME_PROCESS:-manosaba.exe}"
+
+# Which visual novel this is. Everything the reader knows is scoped to it -- the
+# story context, the character names, the mined vocabulary -- so a second VN
+# needs its own slug or its lines will be explained using the first one's plot.
+# Unknown slugs are created on arrival; there is no setup step.
+export YOMU_WORK="${YOMU_WORK:-manosaba}"
+export YOMU_WORK_TITLE="${YOMU_WORK_TITLE:-}"
 
 # Where the last forwarded line is remembered, so the hook re-emitting it does
 # not cost a full send each time. Runtime dir, not $HOME: it is scratch state
@@ -120,6 +130,8 @@ payload = json.dumps({
     \"source\": \"clipboard\",
     \"text\": text,
     \"ts\": int(float(sys.argv[1]) * 1000),
+    \"work\": os.environ.get(\"YOMU_WORK\") or None,
+    \"title\": os.environ.get(\"YOMU_WORK_TITLE\") or None,
 }).encode()
 
 headers = {\"content-type\": \"application/json\"}

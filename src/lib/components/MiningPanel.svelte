@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
+	import { withWork, workQuery } from '$lib/work';
 	import { toRomaji } from '$lib/romaji';
 	import { tokenize } from '$lib/tokenize';
 	import CardPreview from './CardPreview.svelte';
@@ -45,13 +46,13 @@
 	);
 
 	async function load() {
-		const d = await (await fetch('/api/mining')).json();
+		const d = await (await fetch(`/api/mining${workQuery()}`)).json();
 		candidates = d.candidates;
 		drafts = d.drafts ?? [];
 		counts = d.counts;
 		latticeReady = d.latticeReady;
 
-		const r = await (await fetch('/api/mining/rebuild')).json();
+		const r = await (await fetch(`/api/mining/rebuild${workQuery()}`)).json();
 		mined = r.words ?? [];
 	}
 
@@ -80,10 +81,10 @@
 				todo.map(async (m) => ({ lemma: m.lemma, tokens: await tokensFor(m.sentence) }))
 			);
 
-			const res = await fetch('/api/mining/rebuild', {
+			const res = await fetch(`/api/mining/rebuild${workQuery()}`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ items })
+				body: JSON.stringify(withWork({ items }))
 			});
 			if (!res.ok) throw new Error(await res.text());
 
@@ -128,10 +129,10 @@
 				chosen.map(async (c) => ({ lemma: c.lemma, tokens: await tokensFor(c.sentence) }))
 			);
 
-			const res = await fetch('/api/mining/enrich', {
+			const res = await fetch(`/api/mining/enrich${workQuery()}`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ items })
+				body: JSON.stringify(withWork({ items }))
 			});
 			if (!res.ok) throw new Error(await res.text());
 
@@ -158,10 +159,10 @@
 		notice = null;
 
 		try {
-			const res = await fetch('/api/mining', {
+			const res = await fetch(`/api/mining${workQuery()}`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ action: 'create', lemmas: drafts.map((d) => d.lemma) })
+				body: JSON.stringify(withWork({ action: 'create', lemmas: drafts.map((d) => d.lemma) }))
 			});
 			if (!res.ok) throw new Error(await res.text());
 
@@ -187,10 +188,10 @@
 	async function discard(lemma: string) {
 		busy = lemma;
 		try {
-			await fetch('/api/mining/enrich', {
+			await fetch(`/api/mining/enrich${workQuery()}`, {
 				method: 'DELETE',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ lemma })
+				body: JSON.stringify(withWork({ lemma }))
 			});
 			drafts = drafts.filter((d) => d.lemma !== lemma);
 		} finally {
@@ -202,10 +203,10 @@
 		busy = lemma;
 		failed = null;
 		try {
-			const res = await fetch('/api/mining', {
+			const res = await fetch(`/api/mining${workQuery()}`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ lemma, action: 'reject' })
+				body: JSON.stringify(withWork({ lemma, action: 'reject' }))
 			});
 			if (!res.ok) throw new Error(await res.text());
 			candidates = (candidates ?? []).filter((c) => c.lemma !== lemma);

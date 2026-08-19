@@ -7,7 +7,8 @@ import {
 	contextLines,
 	lineWithSeq,
 	saveExplanation,
-	storyDigests
+	storyDigests,
+	workForSession
 } from '$lib/server/db';
 import { buildContext } from '$lib/context';
 import { buildPrompt, cacheKey, explainConfigured, runExplain } from '$lib/server/explain';
@@ -25,13 +26,17 @@ export const POST: RequestHandler = async ({ request }) => {
 	const line = lineWithSeq(lineId);
 	if (!line) error(404, 'no such line');
 
+	// The work follows the line, not the reader's current one. Explaining an old
+	// line must use its own story's context, whichever VN is open now.
+	const work = workForSession(line.session_id);
+
 	// Everything the model may know, bounded by where the reader is. The line
 	// being explained is the boundary, so nothing later can reach the prompt.
 	const ctx = buildContext({
 		currentSeq: line.seq,
-		digests: storyDigests(),
-		facts: characterFacts(),
-		lines: contextLines(line.session_id)
+		digests: storyDigests(work),
+		facts: characterFacts(work),
+		lines: contextLines(work)
 	});
 
 	// A span must be part of the line it claims to be from, so a caller cannot

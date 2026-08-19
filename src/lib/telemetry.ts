@@ -14,10 +14,14 @@
  * would add network latency, stop working when the reader is closed, and give
  * timing a second source of truth that could disagree with the first.
  */
+import { withWork } from './work';
+
 export type EventType = 'lookup' | 'explain' | 'reveal';
 
 export function track(type: EventType, lineId: number | null, payload?: unknown): void {
-	const body = JSON.stringify({ type, lineId, payload, at: Date.now() });
+	// Carries the work, so a lookup made while reading one VN cannot rank a word
+	// in another one's mining queue.
+	const body = JSON.stringify(withWork({ type, lineId, payload, at: Date.now() }));
 
 	// sendBeacon survives the page being closed mid-session, which a fetch does
 	// not. Reading sessions end by closing the tab far more often than by any

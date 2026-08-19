@@ -1,6 +1,12 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { currentSession, sessionInfo, sessionSamples, setSessionMode } from '$lib/server/db';
+import {
+	currentSession,
+	sessionInfo,
+	sessionSamples,
+	setSessionMode,
+	currentWork
+} from '$lib/server/db';
 import { summarise } from '$lib/stats';
 
 /**
@@ -11,7 +17,7 @@ import { summarise } from '$lib/stats';
  * "logged but inert" verifiable rather than an article of faith.
  */
 export const GET: RequestHandler = () => {
-	const id = currentSession();
+	const id = currentSession(currentWork().id);
 	const { advances, lookups } = sessionSamples(id);
 	const info = sessionInfo(id);
 
@@ -27,7 +33,7 @@ export const PATCH: RequestHandler = async ({ request }) => {
 	const body = await request.json().catch(() => null);
 	if (!body || !MODES.has(body.mode)) error(400, 'mode must be reading, skimming or unknown');
 
-	const id = currentSession();
+	const id = currentSession(currentWork().id);
 	// The declared mode wins over the inferred one. The heuristic exists to catch
 	// the case where nobody remembered to say, not to overrule someone who did.
 	setSessionMode(id, body.mode);

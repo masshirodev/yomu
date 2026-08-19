@@ -3,7 +3,6 @@ import type { RequestHandler } from './$types';
 import {
 	characterFacts,
 	contextLines,
-	currentSession,
 	lineById,
 	lineWithSeq,
 	listNames,
@@ -24,6 +23,7 @@ import {
 } from '$lib/enrich';
 import { latticeConfigured, LatticeError, updateNote } from '$lib/server/lattice';
 import { explainConfigured, runProvider } from '$lib/server/explain';
+import { resolveWork } from '$lib/server/work';
 
 /**
  * Rebuild cards that were already sent.
@@ -42,17 +42,20 @@ import { explainConfigured, runProvider } from '$lib/server/explain';
 const MAX_BATCH = 6;
 
 /** The mined words and the sentences they were met in, for the client to tokenise. */
-export const GET: RequestHandler = () =>
-	json({
-		words: minedWords().map((w) => {
+export const GET: RequestHandler = ({ url }) => {
+	const work = resolveWork(url.searchParams.get('work'));
+	return json({
+		words: minedWords(work.id).map((w) => {
 			const line = w.lineId === null ? null : lineById(w.lineId);
 			return { ...w, sentence: line?.text ?? null, speaker: line?.speaker ?? null };
 		}),
 		ready: latticeConfigured()
 	});
+};
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, url }) => {
 	const body = await request.json().catch(() => null);
+	const work = resolveWork(body?.work ?? url.searchParams.get('work'));
 	const items = Array.isArray(body?.items) ? body.items : null;
 	if (!items?.length) error(400, 'expected { items: [{ lemma, tokens }] }');
 	if (items.length > MAX_BATCH) error(400, `at most ${MAX_BATCH} words at a time`);
@@ -63,10 +66,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		tokensByLemma.set(it.lemma, Array.isArray(it.tokens) ? it.tokens : []);
 	}
 
-	const selected = minedWords().filter((w) => tokensByLemma.has(w.lemma));
+	const selected = minedWords(work.id).filter((w) => tokensByLemma.has(w.lemma));
 	if (!selected.length) error(404, 'none of those are mined words');
 
-	const names = listNames();
+	const names = listNames(work.id);
 
 	const prepared = selected.map((w) => {
 		const line = w.lineId === null ? null : lineById(w.lineId);
@@ -98,9 +101,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		? renderContext(
 				buildContext({
 					currentSeq: Math.max(...seqs),
-					digests: storyDigests(),
-					facts: characterFacts(),
-					lines: contextLines(currentSession())
+					digests: storyDigests(work.id),
+					facts: characterFacts(work.id),
+					lines: contextLines(work.id)
 				})
 			)
 		: '';
@@ -165,6 +168,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			speaker: p.speaker,
 			annotatedSentence: p.annotated,
 			sentenceTranslation: null,
+			tags: `yomu,${work.slug}`,
 			enrichment
 		});
 
@@ -172,7 +176,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			await updateNote(p.word.noteId, card);
 			// Stamped only after Lattice confirms, so a card that failed to update
 			// stays on the list instead of being quietly marked done.
-			markCardFormat(p.word.lemma);
+			markCardFormat(work.id, p.word.lemma);
 			rebuilt.push(p.word.lemma);
 		} catch (e) {
 			failed.push({

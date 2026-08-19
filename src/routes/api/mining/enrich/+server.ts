@@ -4,7 +4,6 @@ import {
 	allLookups,
 	characterFacts,
 	contextLines,
-	currentSession,
 	deleteDraft,
 	lineById,
 	lineWithSeq,
@@ -27,6 +26,7 @@ import {
 } from '$lib/enrich';
 import { rankCandidates } from '$lib/mining';
 import { explainConfigured, runProvider } from '$lib/server/explain';
+import { resolveWork } from '$lib/server/work';
 
 /**
  * Enrich a selection of mined words into reviewable cards.
@@ -50,15 +50,17 @@ import { explainConfigured, runProvider } from '$lib/server/explain';
  */
 const MAX_BATCH = 6;
 
-export const GET: RequestHandler = () => json({ drafts: listDrafts() });
+export const GET: RequestHandler = ({ url }) =>
+	json({ drafts: listDrafts(resolveWork(url.searchParams.get('work')).id) });
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, url }) => {
 	const body = await request.json().catch(() => null);
+	const work = resolveWork(body?.work ?? url.searchParams.get('work'));
 	const items = Array.isArray(body?.items) ? body.items : null;
 	if (!items?.length) error(400, 'expected { items: [{ lemma, tokens }] }');
 	if (items.length > MAX_BATCH) error(400, `at most ${MAX_BATCH} words at a time`);
 
-	const ranked = rankCandidates(allLookups());
+	const ranked = rankCandidates(allLookups(work.id));
 	const tokensByLemma = new Map<string, SentenceToken[]>();
 	for (const it of items) {
 		if (typeof it?.lemma !== 'string') error(400, 'each item needs a lemma');
@@ -68,7 +70,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const selected = ranked.filter((c) => tokensByLemma.has(c.lemma));
 	if (!selected.length) error(404, 'none of those are candidates');
 
-	const names = listNames();
+	const names = listNames(work.id);
 
 	const prepared = selected.map((c) => {
 		const line = c.lineId === null ? null : lineById(c.lineId);
@@ -104,9 +106,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		? renderContext(
 				buildContext({
 					currentSeq: Math.max(...seqs),
-					digests: storyDigests(),
-					facts: characterFacts(),
-					lines: contextLines(currentSession())
+					digests: storyDigests(work.id),
+					facts: characterFacts(work.id),
+					lines: contextLines(work.id)
 				})
 			)
 		: '';
@@ -160,9 +162,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			speaker: p.speaker,
 			annotatedSentence: p.annotated,
 			sentenceTranslation: null,
-			enrichment: enrichments.get(p.candidate.lemma) ?? null
+			enrichment: enrichments.get(p.candidate.lemma) ?? null,
+			// Tagged with the work, so a deck can be filtered to one story.
+			tags: `yomu,${work.slug}`
 		});
-		saveDraft(draft);
+		saveDraft(work.id, draft);
 		return draft;
 	});
 
@@ -170,9 +174,10 @@ export const POST: RequestHandler = async ({ request }) => {
 };
 
 /** Drop a draft without deciding anything about the word itself. */
-export const DELETE: RequestHandler = async ({ request }) => {
+export const DELETE: RequestHandler = async ({ request, url }) => {
 	const body = await request.json().catch(() => null);
+	const work = resolveWork(body?.work ?? url.searchParams.get('work'));
 	if (typeof body?.lemma !== 'string') error(400, 'expected { lemma }');
-	deleteDraft(body.lemma);
+	deleteDraft(work.id, body.lemma);
 	return json({ ok: true });
 };

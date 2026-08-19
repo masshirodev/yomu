@@ -13,6 +13,7 @@ import {
 import { lookup } from '$lib/server/dict';
 import { createNote, latticeConfigured, LatticeError } from '$lib/server/lattice';
 import { rankCandidates } from '$lib/mining';
+import { resolveWork } from '$lib/server/work';
 import { composeCard } from '$lib/enrich';
 import { furigana } from '$lib/furigana';
 
@@ -25,8 +26,9 @@ const MAX_CANDIDATES = 40;
  * approval, because auto-mining floods a deck and kills the review habit inside
  * a week -- which costs far more than the handful of words a human filter drops.
  */
-export const GET: RequestHandler = () => {
-	const ranked = rankCandidates(allLookups()).slice(0, MAX_CANDIDATES);
+export const GET: RequestHandler = ({ url }) => {
+	const work = resolveWork(url.searchParams.get('work'));
+	const ranked = rankCandidates(allLookups(work.id)).slice(0, MAX_CANDIDATES);
 
 	const candidates = ranked.map((c) => {
 		const line = c.lineId === null ? null : lineById(c.lineId);
@@ -43,14 +45,15 @@ export const GET: RequestHandler = () => {
 
 	return json({
 		candidates,
-		drafts: listDrafts(),
-		counts: miningCounts(),
+		drafts: listDrafts(work.id),
+		counts: miningCounts(work.id),
 		latticeReady: latticeConfigured()
 	});
 };
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, url }) => {
 	const body = await request.json().catch(() => null);
+	const work = resolveWork(body?.work ?? url.searchParams.get('work'));
 
 	// Creating the enriched batch. Each card is sent on its own and reported on
 	// its own: a batch that fails halfway must say which words got through, or
@@ -63,7 +66,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const failed: { lemma: string; error: string }[] = [];
 
 		for (const lemma of lemmas) {
-			const draft = draftByLemma(lemma);
+			const draft = draftByLemma(work.id, lemma);
 			if (!draft) {
 				failed.push({ lemma, error: 'no draft; enrich it first' });
 				continue;
@@ -78,30 +81,30 @@ export const POST: RequestHandler = async ({ request }) => {
 				});
 				// Same order as the single-word path: Lattice confirms, then the word
 				// is retired from the queue, then the draft is spent.
-				recordDecision(lemma, 'approved', noteId);
-				deleteDraft(lemma);
+				recordDecision(work.id, lemma, 'approved', noteId);
+				deleteDraft(work.id, lemma);
 				created.push(lemma);
 			} catch (e) {
 				failed.push({ lemma, error: e instanceof Error ? e.message : String(e) });
 			}
 		}
 
-		return json({ ok: failed.length === 0, created, failed, counts: miningCounts() });
+		return json({ ok: failed.length === 0, created, failed, counts: miningCounts(work.id) });
 	}
 
 	if (!body || typeof body.lemma !== 'string') error(400, 'expected { lemma, action }');
 
 	if (body.action === 'reject') {
-		recordDecision(body.lemma, 'rejected', null);
+		recordDecision(work.id, body.lemma, 'rejected', null);
 		// A skipped word must not leave an enriched draft behind, or it reappears in
 		// the review list having already been decided against.
-		deleteDraft(body.lemma);
-		return json({ ok: true, counts: miningCounts() });
+		deleteDraft(work.id, body.lemma);
+		return json({ ok: true, counts: miningCounts(work.id) });
 	}
 
 	if (body.action !== 'approve') error(400, 'action must be approve or reject');
 
-	const [candidate] = rankCandidates(allLookups()).filter((c) => c.lemma === body.lemma);
+	const [candidate] = rankCandidates(allLookups(work.id)).filter((c) => c.lemma === body.lemma);
 	if (!candidate) error(404, 'no such candidate');
 
 	const line = candidate.lineId === null ? null : lineById(candidate.lineId);
@@ -120,15 +123,16 @@ export const POST: RequestHandler = async ({ request }) => {
 		speaker: line?.speaker ?? null,
 		annotatedSentence: line?.text ?? null,
 		sentenceTranslation: null,
-		enrichment: null
+		enrichment: null,
+		tags: `yomu,${work.slug}`
 	});
 
 	try {
 		const noteId = await createNote({ ...card, deckId: env.YOMU_LATTICE_DECK });
 		// Recorded only after Lattice confirms. Marking it decided first would mean
 		// a failed push silently retires the word from the queue forever.
-		recordDecision(candidate.lemma, 'approved', noteId);
-		return json({ ok: true, noteId, counts: miningCounts() });
+		recordDecision(work.id, candidate.lemma, 'approved', noteId);
+		return json({ ok: true, noteId, counts: miningCounts(work.id) });
 	} catch (e) {
 		if (e instanceof LatticeError) error(502, e.message);
 		throw e;
