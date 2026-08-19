@@ -17,6 +17,16 @@
 # and over the tailnet nothing else is in front of it at all, so the shared
 # secret is the only guard in both cases.
 #
+# Gate order is a performance decision, not a security one. Both gates still
+# apply to everything that is sent; they are simply evaluated cheapest-first.
+# That matters because the handler runs on EVERY clipboard change on the
+# machine, and the machine is also playing the game: measured here, pgrep costs
+# 26ms (it enumerates ~390 processes, and -x is no cheaper than -f -- the cost
+# is enumeration, not reading cmdlines) and starting python with urllib costs
+# 54ms. Both were being paid to discard a Discord copy. The kana/kanji test is
+# a bash case with no fork at all, at 0.01ms, so it goes first and the
+# expensive checks only run for text that is plausibly a game line.
+#
 # $EPOCHREALTIME is read as the first statement in the handler, before any fork.
 # Dwell time is the entire input to the known-word model and every later hop adds
 # latency, so the clock nearest the human wins. An earlier version timestamped
@@ -50,28 +60,60 @@ echo "Ctrl-C to stop."
 # everything else on the machine, so without this the bridge relays whatever you
 # copy -- and it already relayed an ingest token pasted from a setup command,
 # which then landed in the line store. Two independent gates guard that now:
-# this one, and a Japanese-content check in the handler below.
+# this one, and a Japanese-content check.
 export YOMU_GAME_PROCESS="${YOMU_GAME_PROCESS:-manosaba.exe}"
+
+# Where the last forwarded line is remembered, so the hook re-emitting it does
+# not cost a full send each time. Runtime dir, not $HOME: it is scratch state
+# that should not survive a reboot.
+export YOMU_BRIDGE_STATE="${XDG_RUNTIME_DIR:-/tmp}/yomu-bridge-last"
 
 exec wl-paste --type text --watch bash -c '
   ts=$EPOCHREALTIME
-  # Cheapest gate first: nothing is forwarded when the game is not running.
+  # A builtin, so the reject path forks nothing at all. read returns non-zero at
+  # EOF having set the variable, which is why the failure is ignored.
+  IFS= read -r -d "" text || true
+
+  # Gate 1, and free: kana or kanji. Every line this VN produces has some;
+  # almost nothing you copy by accident does. A bash case forks nothing, so a
+  # Discord copy now costs about a hundredth of a millisecond instead of the
+  # 80ms it used to spend discovering the same thing inside python.
+  #
+  # Ranges compare bytewise when no locale is set, which is why this is correct
+  # rather than lucky: ASCII bytes cannot fall inside a three-byte CJK sequence.
+  case $text in
+    *[ぁ-ゟ]*|*[ァ-ヿ]*|*[一-鿿]*) ;;
+    *) exit 0 ;;
+  esac
+
+  # Gate 2, also free: the hook re-emits the line already on screen, several
+  # times, within a second. The server discards those, but only after they have
+  # crossed the network -- and each one was costing a pgrep and a python here.
+  prev=""
+  [ -f "$YOMU_BRIDGE_STATE" ] && prev=$(<"$YOMU_BRIDGE_STATE")
+  prev_ts=${prev%%$'"'"'\n'"'"'*}
+  prev_text=${prev#*$'"'"'\n'"'"'}
+  prev_ts=${prev_ts%%.*}
+  case $prev_ts in *[!0-9]*|"") prev_ts=0 ;; esac
+  if [ "$text" = "$prev_text" ] && [ $(( ${ts%%.*} - prev_ts )) -lt 2 ]; then
+    exit 0
+  fi
+
+  # Gate 3, and now rarely reached: is the game actually running.
   if [ -n "$YOMU_GAME_PROCESS" ] && ! pgrep -f "$YOMU_GAME_PROCESS" >/dev/null 2>&1; then
     exit 0
   fi
-  exec python3 -c "
+
+  printf "%s\n%s" "$ts" "$text" > "$YOMU_BRIDGE_STATE"
+
+  # python only for the send itself. It is the slowest thing here and also the
+  # only one that gets JSON escaping of arbitrary Japanese right, which matters
+  # more than 54ms on a line you are about to spend a minute reading.
+  printf "%s" "$text" | exec python3 -c "
 import json, os, sys, urllib.request
 
 text = sys.stdin.read()
 if not text.strip():
-    sys.exit(0)
-
-# Every line this VN produces contains kana or kanji; almost nothing you copy by
-# accident does. Filtering HERE rather than server-side is the point -- a
-# password or token that is never sent cannot be stored, logged, or leaked by
-# something downstream.
-import re
-if not re.search(r\"[\\u3040-\\u30ff\\u3400-\\u4dbf\\u4e00-\\u9fff]\", text):
     sys.exit(0)
 
 payload = json.dumps({
