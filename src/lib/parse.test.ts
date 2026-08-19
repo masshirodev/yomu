@@ -95,6 +95,7 @@ describe('parseEvent', () => {
 
 	it('ignores an empty event without losing a held speaker', () => {
 		const { lines, state } = parseEvent(event('   \n\n  '), {
+			...emptyState(),
 			pendingSpeaker: '橘シェリー',
 			pendingSince: 0
 		});
@@ -204,5 +205,73 @@ describe('mostlyLatin — keeping the reader out of its own line store', () => {
 
 	it('is not upset by empty input', () => {
 		expect(mostlyLatin('')).toBe(false);
+	});
+});
+
+describe('the hook echoing a line it already sent', () => {
+	// Measured from the real capture: 「――ここは牢獄だ。」 arrived four times in
+	// under a second, and 「あるときは上履きに虫を詰められた。」 twice in 0.35s.
+	// Each echo was stored as a line of its own, and the near-zero gap between a
+	// line and its own echo went straight into the reading-pace median -- making
+	// the measured pace 2.5x faster than the real one.
+	const send = (text: string, at: number, state = emptyState()) =>
+		parseEvent({ text, source: 'clipboard', ts: at }, state, { now: at });
+
+	it('drops a line the hook repeats a moment later', () => {
+		const first = send('――ここは牢獄だ。', 1000);
+		const second = send('――ここは牢獄だ。', 1410, first.state);
+
+		expect(first.lines).toHaveLength(1);
+		expect(second.lines).toHaveLength(0);
+	});
+
+	it('keeps a repetition the story actually wrote', () => {
+		// A visual novel really can repeat a line, and the reader has to click
+		// through it. Dropping the second one would delete written content, which
+		// is a worse failure than keeping a stray copy.
+		const first = send('やめて。', 1000);
+		const second = send('やめて。', 1000 + 8000, first.state);
+
+		expect(first.lines).toHaveLength(1);
+		expect(second.lines).toHaveLength(1);
+	});
+
+	it('drops the line the game redraws when you come back', () => {
+		// Every resume redraws the line you stopped on. Once per session, forever,
+		// so it is not an edge case.
+		const before = send('あるときはトイレの個室に閉じ込められた。', 1000);
+		const after = send('あるときはトイレの個室に閉じ込められた。', 1000 + 87_861_000, before.state);
+
+		expect(after.lines).toHaveLength(0);
+	});
+
+	it('does not suppress a different line arriving quickly', () => {
+		const first = send('ま、待ってよヒロちゃん！', 1000);
+		const second = send('エマはすぐにヒロの後を追って通路へと出る。', 1000 + 300, first.state);
+
+		expect(second.lines).toHaveLength(1);
+	});
+
+	it('checks only the first line of an event', () => {
+		// One event can legitimately carry a repeated line -- the prologue arrives
+		// as a single 478-character block -- and a within-event repeat is already
+		// handled where it is genuinely consecutive.
+		const first = send('牢獄だ。', 1000);
+		const second = send('牢獄だ。\n鎖だ。\n牢獄だ。', 1200, first.state);
+
+		expect(second.lines.map((l) => l.text)).toEqual(['鎖だ。', '牢獄だ。']);
+	});
+
+	it('measures the window from the last line kept, not the last echo seen', () => {
+		// Echoes arriving every 1.9s would otherwise walk the window forward
+		// indefinitely and each one would be kept.
+		let s = emptyState();
+		let kept = 0;
+		for (let i = 0; i < 5; i++) {
+			const r = send('――ここは牢獄だ。', 1000 + i * 400, s);
+			kept += r.lines.length;
+			s = r.state;
+		}
+		expect(kept).toBe(1);
 	});
 });

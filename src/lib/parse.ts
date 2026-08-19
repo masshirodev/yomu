@@ -7,6 +7,8 @@
  * parser at that cost is miserable.
  */
 
+import { SESSION_IDLE_MS } from './stats';
+
 /** Where an event came from. The reader does not care; the parser sometimes does. */
 export type SourceKind = 'clipboard' | 'cli' | 'manual';
 
@@ -116,9 +118,29 @@ export type ParseState = {
 	pendingSpeaker: string | null;
 	/** When the speaker was seen, so a stale one cannot latch onto a later line. */
 	pendingSince: number;
+	/** The last line emitted, so the hook re-firing it does not become a new one. */
+	lastText: string | null;
+	lastAt: number;
 };
 
-export const emptyState = (): ParseState => ({ pendingSpeaker: null, pendingSince: 0 });
+export const emptyState = (): ParseState => ({
+	pendingSpeaker: null,
+	pendingSince: 0,
+	lastText: null,
+	lastAt: 0
+});
+
+/**
+ * How close a repeat has to be to count as the hook firing twice.
+ *
+ * Measured, not guessed. Every repeat in the capture arrived within 1.5s of the
+ * line it repeated -- 0.23s, 0.27s, 0.35s, 0.41s, 0.45s, 1.25s -- while the
+ * fastest genuine advance between two *different* lines was 1.17s. Those
+ * distributions touch, which is why this is not a wider window: a visual novel
+ * really can show 「……」 twice in a row, and dropping the second one when it was
+ * deliberately written is a worse failure than keeping a stray copy.
+ */
+export const REPEAT_WINDOW_MS = 2_000;
 
 /**
  * A held speaker only belongs to the line that immediately follows it.
@@ -178,6 +200,23 @@ export function mostlyLatin(text: string): boolean {
 	return latin / letters.length > MAX_LATIN_RATIO;
 }
 
+/**
+ * Whether a repeat of the previous line is the hook echoing rather than the
+ * story genuinely repeating itself.
+ *
+ * Two cases, and they sit at opposite ends of the clock. A repeat within a
+ * moment is the hook re-emitting what is already on screen. A repeat after a
+ * whole sitting has passed is the game redrawing the line you stopped on when
+ * you came back to it -- which happens on every single resume, so it is not an
+ * edge case, it is a line of phantom data per session.
+ *
+ * The gap in between is left alone. That is where a deliberate repetition
+ * lives, and where a genuine re-read of an earlier scene would land.
+ */
+function isEcho(gap: number): boolean {
+	return gap < REPEAT_WINDOW_MS || gap > SESSION_IDLE_MS;
+}
+
 export type ParseResult = { lines: ParsedLine[]; state: ParseState };
 
 /**
@@ -210,6 +249,8 @@ export function parseEvent(
 	);
 
 	const lines: ParsedLine[] = [];
+	let lastText = state.lastText;
+	let lastAt = state.lastAt;
 	// A speaker older than the window is stale and dropped rather than attached.
 	let pendingSpeaker =
 		state.pendingSpeaker && now - state.pendingSince <= SPEAKER_TTL_MS
@@ -230,8 +271,25 @@ export function parseEvent(
 		// The name box fires for narration too, so a held speaker must not be
 		// attached to a line that is plainly describing that character rather
 		// than voicing them.
+		// The hook re-emits the line it is already showing, several times, and each
+		// arrival used to be stored as a line of its own. That is not cosmetic: the
+		// gap between a line and its own echo is a fraction of a second, and those
+		// fractions go straight into the reading-pace median. They were making the
+		// measured pace 2.5x faster than the real one.
+		//
+		// Only the first line of an event is checked, because a single event can
+		// legitimately carry a repeated line -- the prologue arrives as one 478
+		// character block -- and `dedupeRepeated` already handles a doubled payload.
+		if (lines.length === 0 && part === lastText && isEcho(now - lastAt)) {
+			pendingSpeaker = null;
+			continue;
+		}
+
 		const narration = looksLikeNarration(part, fragments);
 		const speaker = narration ? null : pendingSpeaker;
+
+		lastText = part;
+		lastAt = now;
 
 		lines.push({
 			kind: speaker ? 'dialogue' : 'narration',
@@ -241,5 +299,5 @@ export function parseEvent(
 		pendingSpeaker = null;
 	}
 
-	return { lines, state: { pendingSpeaker, pendingSince } };
+	return { lines, state: { pendingSpeaker, pendingSince, lastText, lastAt } };
 }

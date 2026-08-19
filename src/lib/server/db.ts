@@ -655,3 +655,20 @@ export function minedWords(): MinedWord[] {
 		return { lemma: r.lemma, noteId: r.noteId, surface, lineId: r.lineId };
 	});
 }
+
+/**
+ * The most recently stored line, whatever session it belonged to.
+ *
+ * Deliberately not scoped to a session. It exists to seed the parser's
+ * echo suppression, and the case that needs it most is the game redrawing the
+ * line you stopped on when you come back -- which by definition lands in a new
+ * session, where per-session carry-over is empty.
+ */
+export function lastStoredLine(): { text: string; received_at: number } | null {
+	return (
+		(db.prepare('SELECT text, received_at FROM lines ORDER BY id DESC LIMIT 1').get() as {
+			text: string;
+			received_at: number;
+		}) ?? null
+	);
+}
