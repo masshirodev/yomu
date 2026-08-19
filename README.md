@@ -55,6 +55,12 @@ Ingest is source-agnostic. The clipboard bridge posts today; a TextractorCLI
 reader or an OCR fallback would post the same shape, and nothing downstream
 knows the difference.
 
+Everything yomu knows is scoped to a **work** — one visual novel. Story
+context, character readings, mined vocabulary and reading pace all belong to
+one, so a second novel cannot be explained using the first one's plot. See
+[`doc/WORKS.md`](doc/WORKS.md), which also covers per-work engine markup and
+what to set on the bridge when starting a new game.
+
 ## Development
 
 ```sh
