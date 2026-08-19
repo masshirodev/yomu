@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS works (
   id         INTEGER PRIMARY KEY,
   slug       TEXT NOT NULL UNIQUE,
   title      TEXT NOT NULL,
+  -- Which engine's markup its lines carry. Per work because the markup belongs
+  -- to the engine: manosaba emits clean text, Steins;Gate carries pause codes,
+  -- colour spans and ruby.
+  dialect    TEXT NOT NULL DEFAULT 'none',
   created_at INTEGER NOT NULL
 );
 
@@ -214,7 +218,7 @@ const DEFAULT_WORK_TITLE = process.env.YOMU_DEFAULT_WORK_TITLE ?? '魔法少女�
  */
 export type WorkId = number & { readonly __brand: 'WorkId' };
 
-export function ensureWork(slug: string, title?: string): WorkId {
+export function ensureWork(slug: string, title?: string, dialect?: string): WorkId {
 	const clean = slug
 		.trim()
 		.toLowerCase()
@@ -224,11 +228,15 @@ export function ensureWork(slug: string, title?: string): WorkId {
 
 	const found = db.prepare('SELECT id FROM works WHERE slug = ?').get(clean) as
 		{ id: number } | undefined;
-	if (found) return found.id as WorkId;
+	if (found) {
+		// A dialect may be declared later, but never silently cleared.
+		if (dialect) db.prepare('UPDATE works SET dialect = ? WHERE id = ?').run(dialect, found.id);
+		return found.id as WorkId;
+	}
 
 	const r = db
-		.prepare('INSERT INTO works (slug, title, created_at) VALUES (?, ?, ?)')
-		.run(clean, title?.trim() || clean, Date.now());
+		.prepare('INSERT INTO works (slug, title, dialect, created_at) VALUES (?, ?, ?, ?)')
+		.run(clean, title?.trim() || clean, dialect || 'none', Date.now());
 	return Number(r.lastInsertRowid) as WorkId;
 }
 
@@ -243,6 +251,11 @@ const hasColumn = (table: string, column: string) =>
  * Runs once. The guard is the column's own absence, so a restart is a no-op and
  * a half-applied migration finishes itself.
  */
+// Works created before dialects existed carry clean text, which is 'none'.
+if (!hasColumn('works', 'dialect')) {
+	db.exec("ALTER TABLE works ADD COLUMN dialect TEXT NOT NULL DEFAULT 'none'");
+}
+
 if (!hasColumn('sessions', 'work_id')) {
 	const migrate = db.transaction(() => {
 		db.exec('ALTER TABLE sessions ADD COLUMN work_id INTEGER REFERENCES works(id)');
@@ -338,6 +351,7 @@ export type WorkRow = {
 	id: WorkId;
 	slug: string;
 	title: string;
+	dialect: string;
 	created_at: number;
 	lines: number;
 	last_at: number | null;
@@ -346,7 +360,7 @@ export type WorkRow = {
 export function listWorks(): WorkRow[] {
 	return db
 		.prepare(
-			`SELECT w.id, w.slug, w.title, w.created_at,
+			`SELECT w.id, w.slug, w.title, w.dialect, w.created_at,
 			        COUNT(l.id) AS lines, MAX(l.received_at) AS last_at
 			 FROM works w
 			 LEFT JOIN sessions s ON s.work_id = w.id
@@ -930,4 +944,27 @@ export function workForSession(sessionId: number): WorkId {
 	const row = db.prepare('SELECT work_id FROM sessions WHERE id = ?').get(sessionId) as
 		{ work_id: number } | undefined;
 	return (row?.work_id ?? currentWork().id) as WorkId;
+}
+
+/**
+ * A reading the game itself supplied, via its own ruby.
+ *
+ * Stored in the same table as character names because it does the same job:
+ * an authoritative surface-to-reading pair that overrides the tokenizer. It is
+ * the strongest source there is -- 運命石の扉 reads シュタインズゲート, which no
+ * dictionary and no morphological analyser will ever produce -- so unlike a
+ * name discovered from the speaker thread, this arrives already answered and
+ * never needs a human to fill it in.
+ */
+export function noteGameReading(workId: WorkId, surface: string, reading: string): void {
+	if (!surface || !reading) return;
+	db.prepare(
+		`INSERT INTO names (work_id, surface, reading, seen_count, first_seen)
+		 VALUES (?, ?, ?, 1, ?)
+		 ON CONFLICT(work_id, surface) DO UPDATE SET
+		   seen_count = seen_count + 1,
+		   -- Only fills a gap. A reading corrected by hand outranks the engine's,
+		   -- which has been seen to mis-split a run.
+		   reading = COALESCE(names.reading, excluded.reading)`
+	).run(workId, surface, reading, Date.now());
 }

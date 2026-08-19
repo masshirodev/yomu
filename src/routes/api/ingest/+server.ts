@@ -1,7 +1,8 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { parseEvent, type SourceKind } from '$lib/parse';
-import { appendLines, currentSession, listNames, noteName } from '$lib/server/db';
+import { appendLines, currentSession, listNames, noteGameReading, noteName } from '$lib/server/db';
+import { cleanMarkup, type Dialect } from '$lib/markup';
 import { workForIngest } from '$lib/server/work';
 import { publish } from '$lib/server/bus';
 import { saveState, stateFor } from '$lib/server/parse-state';
@@ -30,8 +31,17 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	// The work the bridge says it is playing. Unknown slugs create a work rather
 	// than erroring: starting a new VN should not need a setup step first.
-	const work = workForIngest(body?.work, body?.title);
+	const work = workForIngest(body?.work, body?.title, body?.dialect);
 	const sessionId = currentSession(work.id, ts);
+
+	// Engine markup comes off before anything else looks at the text. Left in,
+	// `%p-1;` and `#ff8A00;` are tokenised as words and ranked as vocabulary.
+	//
+	// The ruby it carries is kept, not discarded: it is the strongest reading
+	// source there is. 運命石の扉 reads シュタインズゲート, which no dictionary
+	// and no tokenizer will ever produce.
+	const { text, ruby } = cleanMarkup(body.text, (work.dialect as Dialect) ?? 'none');
+	for (const r of ruby) noteGameReading(work.id, r.base, r.reading);
 
 	// A speaker name arriving as its own event is held until the line it belongs
 	// to shows up, so attribution survives name and dialogue being on separate
@@ -42,7 +52,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const known = listNames(work.id).map((n) => n.surface);
 
 	const { lines, state } = parseEvent(
-		{ source, text: body.text, ts, thread: body.thread },
+		{ source, text, ts, thread: body.thread },
 		stateFor(sessionId),
 		{ names: known, now: ts }
 	);

@@ -21,9 +21,13 @@ export function resolveWork(slug?: string | null): WorkRow {
  * text can arrive. An unknown slug means a new VN was started, which is exactly
  * when the least friction is wanted.
  */
-export function workForIngest(slug?: string | null, title?: string | null): WorkRow {
+export function workForIngest(
+	slug?: string | null,
+	title?: string | null,
+	dialect?: string | null
+): WorkRow {
 	const clean = slug?.trim();
 	if (!clean) return currentWork();
-	ensureWork(clean, title?.trim() || clean);
+	ensureWork(clean, title?.trim() || clean, dialect?.trim() || undefined);
 	return workBySlug(clean)!;
 }
