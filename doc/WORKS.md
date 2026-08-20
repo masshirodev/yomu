@@ -138,26 +138,29 @@ Two things in that parser are knowingly uncertain and should be revisited:
 
 ## Adding a second visual novel
 
-Nothing needs creating in the reader first.
+One line in `bridge/games.conf`:
 
-```sh
-YOMU_WORK=steinsgate-reboot \
-YOMU_WORK_TITLE='STEINS;GATE RE:BOOT' \
-YOMU_DIALECT=sciadv \
-YOMU_GAME_PROCESS=<exe>.exe \
-./bridge/yomu-send.sh
+```
+process        | work slug         | title               | dialect
+sgre_steam.exe | steinsgate-reboot | STEINS;GATE RE:BOOT | sciadv
 ```
 
-- `YOMU_WORK` — the slug. Created on the first line that arrives.
-- `YOMU_GAME_PROCESS` — **the one that silently breaks it.** It defaults to
-  `manosaba.exe`, and with a different game every line is dropped by the gate
-  with nothing said. Set it or the bridge looks broken for no visible reason.
-- `YOMU_DIALECT` — omit for a game that emits clean text.
+Then `bridge/yomu`, with no argument. Nothing needs creating in the reader
+first: an unknown slug is created by the first line that arrives.
 
-The reader header shows the work's title, and becomes a picker once more than
-one exists. Switching is a full page load carrying `?work=`, not a live swap:
-the page holds lines, names, open panels and a session summary, all belonging to
-the work being left, and a reload discards every one of them at once.
+The process name is what gates forwarding, and it is matched against a **whole**
+process name rather than a substring — `sgre` alone would otherwise be satisfied
+by an editor with the file open. Linux truncates process names at 15 characters,
+so check `ps -eo comm=` before adding a longer one.
+
+Detection runs **per line**, not at startup. Switching games therefore means
+switching games: there is nothing to restart, and no window in which text is
+filed under the novel you were reading an hour ago. It costs one process listing
+on the lines that reach it, which is only the ones that already look like game
+text — see the gate order in `bridge/yomu-send.sh`.
+
+Setting `YOMU_WORK` pins everything and skips detection, for a one-off or a game
+not worth adding to the registry.
 
 ## Gotchas worth knowing
 

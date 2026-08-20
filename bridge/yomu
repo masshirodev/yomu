@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Start the bridge. This is the file to run.
+#
+#   ./bridge/yomu
+#
+# There is no game to choose. The bridge works out which of the games in
+# games.conf is running and tags the text with it, so switching games means
+# switching games -- not restarting anything here.
+#
+# Credentials live outside the repository, in
+# ${XDG_CONFIG_HOME:-~/.config}/yomu/bridge.env, because a token that sits in a
+# working tree eventually gets committed. One has already been relayed into the
+# line store once; that is enough.
+#
+#   YOMU_URL=https://yomu.masshiro.pro
+#   YOMU_INGEST_TOKEN=...
+
+set -euo pipefail
+
+here=$(cd -- "$(dirname -- "$0")" && pwd)
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/yomu/bridge.env"
+
+if [ ! -f "$conf" ]; then
+	cat >&2 <<-MSG
+		No config at $conf
+
+		Create it with the server and the ingest token:
+
+		  mkdir -p "$(dirname -- "$conf")"
+		  cat > "$conf" <<'EOF'
+		  YOMU_URL=https://yomu.masshiro.pro
+		  YOMU_INGEST_TOKEN=your-token-here
+		  EOF
+		  chmod 600 "$conf"
+	MSG
+	exit 1
+fi
+
+# Readable by anyone is the same as published, for a token.
+perms=$(stat -c '%a' "$conf" 2>/dev/null || echo '')
+case $perms in
+	*[1-7][1-7] | *[1-7]) echo "warning: $conf is mode $perms; chmod 600 it" >&2 ;;
+esac
+
+set -a
+# shellcheck disable=SC1090
+. "$conf"
+set +a
+
+exec "$here/yomu-send.sh" "$@"

@@ -81,14 +81,34 @@ On the machine running the game, with Textractor attached and Copy to Clipboard
 enabled on the dialogue thread:
 
 ```sh
-# against the hosted instance, over Tailscale
-YOMU_URL=http://100.127.94.72:42139 \
-YOMU_INGEST_TOKEN=<from yomu/.env on the server> \
-  bridge/yomu-send.sh
-
-# or locally
-YOMU_URL=http://localhost:42139 bridge/yomu-send.sh
+bridge/yomu
 ```
+
+That is the whole invocation, for any game. The bridge works out which of the
+games in [`bridge/games.conf`](bridge/games.conf) is running and tags the text
+with it, per line — so switching games means switching games, with nothing to
+restart and no way to file text under the novel you were reading an hour ago.
+
+Adding a game is one line in that file: its process name, a work slug, a title,
+and which engine markup its text carries.
+
+Credentials live in `${XDG_CONFIG_HOME:-~/.config}/yomu/bridge.env`, outside the
+repository, because a token in a working tree eventually gets committed:
+
+```sh
+mkdir -p ~/.config/yomu
+cat > ~/.config/yomu/bridge.env <<'EOF'
+# The tailnet address, not the public one, if the ISP blocks the VPS from home
+YOMU_URL=http://100.127.94.72:42139
+YOMU_INGEST_TOKEN=<from yomu/.env on the server>
+EOF
+chmod 600 ~/.config/yomu/bridge.env
+```
+
+Nothing is forwarded unless a known game is running and the text contains kana
+or kanji. Both gates are on the sending machine on purpose: a password or a
+token that is never sent cannot be stored, logged or leaked by anything
+downstream.
 
 ## Deployment
 

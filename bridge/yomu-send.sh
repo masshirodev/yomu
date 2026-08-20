@@ -63,29 +63,46 @@ fi
 echo "bridging clipboard -> $YOMU_URL/api/ingest"
 echo "Ctrl-C to stop."
 
-# Only forward while the game is actually running. The clipboard is shared with
-# everything else on the machine, so without this the bridge relays whatever you
-# copy -- and it already relayed an ingest token pasted from a setup command,
-# which then landed in the line store. Two independent gates guard that now:
-# this one, and a Japanese-content check.
-export YOMU_GAME_PROCESS="${YOMU_GAME_PROCESS:-manosaba.exe}"
+# Which games to forward for, and what to tag their text with.
+#
+# The clipboard is shared with everything on the machine, so a game must be
+# running for anything to be sent -- without that the bridge relays whatever you
+# copy, and it has already relayed an ingest token pasted from a setup command
+# straight into the line store. Two independent gates guard that: this one, and
+# a kana check.
+#
+# Detection happens per line rather than at startup, so switching games means
+# switching games. Nothing here needs restarting, and text can never be filed
+# under the novel you were reading an hour ago.
+export YOMU_GAMES="${YOMU_GAMES:-$(cd -- "$(dirname -- "$0")" && pwd)/games.conf}"
+[ -r "$YOMU_GAMES" ] || {
+	echo "No game registry at $YOMU_GAMES" >&2
+	exit 1
+}
 
-# Which visual novel this is. Everything the reader knows is scoped to it -- the
-# story context, the character names, the mined vocabulary -- so a second VN
-# needs its own slug or its lines will be explained using the first one's plot.
-# Unknown slugs are created on arrival; there is no setup step.
-export YOMU_WORK="${YOMU_WORK:-manosaba}"
+# Setting YOMU_WORK pins everything and skips detection, for a one-off or a game
+# not worth adding to the registry.
+export YOMU_WORK="${YOMU_WORK:-}"
 export YOMU_WORK_TITLE="${YOMU_WORK_TITLE:-}"
-
-# Which engine's markup its text carries, so it can be stripped and its ruby
-# kept. 'none' for a game that emits clean text; 'sciadv' for the pause codes,
-# colour spans and ruby that Steins;Gate Re:boot uses.
 export YOMU_DIALECT="${YOMU_DIALECT:-}"
+export YOMU_GAME_PROCESS="${YOMU_GAME_PROCESS:-}"
 
 # Where the last forwarded line is remembered, so the hook re-emitting it does
 # not cost a full send each time. Runtime dir, not $HOME: it is scratch state
 # that should not survive a reboot.
 export YOMU_BRIDGE_STATE="${XDG_RUNTIME_DIR:-/tmp}/yomu-bridge-last"
+
+if [ -n "$YOMU_WORK" ]; then
+	echo "bridging clipboard -> $YOMU_URL/api/ingest  (pinned to $YOMU_WORK)"
+else
+	echo "bridging clipboard -> $YOMU_URL/api/ingest"
+	echo "watching for:"
+	sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$YOMU_GAMES" |
+		while IFS='|' read -r proc slug _title _dialect; do
+			printf '  %-16s -> %s\n' "$(echo "$proc" | tr -d ' ')" "$(echo "$slug" | tr -d ' ')"
+		done
+fi
+echo "Ctrl-C to stop."
 
 exec wl-paste --type text --watch bash -c '
   ts=$EPOCHREALTIME
@@ -118,8 +135,30 @@ exec wl-paste --type text --watch bash -c '
     exit 0
   fi
 
-  # Gate 3, and now rarely reached: is the game actually running.
-  if [ -n "$YOMU_GAME_PROCESS" ] && ! pgrep -f "$YOMU_GAME_PROCESS" >/dev/null 2>&1; then
+  # Gate 3, and now rarely reached: which game is running.
+  #
+  # One process listing for every game rather than a pgrep each, and matched
+  # against whole process names -- a substring match would let "sgre" pick up an
+  # editor with the file open.
+  if [ -z "$YOMU_WORK" ]; then
+    running=$(ps -eo comm= 2>/dev/null)
+    nl="
+"
+    while IFS="|" read -r proc slug title dialect; do
+      proc=$(echo "$proc" | tr -d " \t")
+      case $proc in ""|"#"*) continue ;; esac
+      case "$nl$running$nl" in
+        *"$nl$proc$nl"*)
+          YOMU_WORK=$(echo "$slug" | sed "s/^[[:space:]]*//;s/[[:space:]]*$//")
+          YOMU_WORK_TITLE=$(echo "$title" | sed "s/^[[:space:]]*//;s/[[:space:]]*$//")
+          YOMU_DIALECT=$(echo "$dialect" | sed "s/^[[:space:]]*//;s/[[:space:]]*$//")
+          break ;;
+      esac
+    done < "$YOMU_GAMES"
+    # Nothing recognised is running, so this is something else you copied.
+    [ -n "$YOMU_WORK" ] || exit 0
+    export YOMU_WORK YOMU_WORK_TITLE YOMU_DIALECT
+  elif [ -n "$YOMU_GAME_PROCESS" ] && ! pgrep -f "$YOMU_GAME_PROCESS" >/dev/null 2>&1; then
     exit 0
   fi
 
