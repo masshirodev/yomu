@@ -60,9 +60,6 @@ fi
 	exit 1
 }
 
-echo "bridging clipboard -> $YOMU_URL/api/ingest"
-echo "Ctrl-C to stop."
-
 # Which games to forward for, and what to tag their text with.
 #
 # The clipboard is shared with everything on the machine, so a game must be
