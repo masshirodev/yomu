@@ -7,7 +7,7 @@
 	import AttemptPanel from '$lib/components/AttemptPanel.svelte';
 	import SessionPanel from '$lib/components/SessionPanel.svelte';
 	import MiningPanel from '$lib/components/MiningPanel.svelte';
-	import { loadTokenizer, type Token } from '$lib/tokenize';
+	import { loadTokenizer, type Token } from 'kotoba';
 	import type { SessionStats } from '$lib/stats';
 
 	type StoredLine = {

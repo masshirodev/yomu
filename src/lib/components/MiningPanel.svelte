@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
 	import { withWork, workQuery } from '$lib/work';
-	import { toRomaji } from '$lib/romaji';
-	import { tokenize } from '$lib/tokenize';
+	import { toRomaji } from 'kotoba';
+	import { tokenize } from 'kotoba';
 	import CardPreview from './CardPreview.svelte';
 
 	type Candidate = {

@@ -15,16 +15,10 @@ import {
 import { lookup } from '$lib/server/dict';
 import { buildContext } from '$lib/context';
 import { renderContext } from '$lib/context';
-import { furigana } from '$lib/furigana';
-import {
-	annotateSentence,
-	buildEnrichPrompt,
-	composeCard,
-	matchEnrichments,
-	type Enrichment,
-	type SentenceToken
-} from '$lib/enrich';
-import { rankCandidates } from '$lib/mining';
+import { furigana } from 'kotoba';
+import { annotateSentence, composeCard, type Enrichment, type SentenceToken } from 'kotoba';
+import { buildEnrichPrompt, matchEnrichments } from '$lib/enrich';
+import { rankCandidates } from 'kotoba';
 import { explainConfigured, runProvider } from '$lib/server/explain';
 import { resolveWork } from '$lib/server/work';
 

@@ -12,15 +12,9 @@ import {
 } from '$lib/server/db';
 import { lookup } from '$lib/server/dict';
 import { buildContext, renderContext } from '$lib/context';
-import { furigana } from '$lib/furigana';
-import {
-	annotateSentence,
-	buildEnrichPrompt,
-	composeCard,
-	matchEnrichments,
-	type Enrichment,
-	type SentenceToken
-} from '$lib/enrich';
+import { furigana } from 'kotoba';
+import { annotateSentence, composeCard, type Enrichment, type SentenceToken } from 'kotoba';
+import { buildEnrichPrompt, matchEnrichments } from '$lib/enrich';
 import { latticeConfigured, LatticeError, updateNote } from '$lib/server/lattice';
 import { explainConfigured, runProvider } from '$lib/server/explain';
 import { resolveWork } from '$lib/server/work';

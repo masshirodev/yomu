@@ -5,6 +5,11 @@ services:
     build:
       context: .
       target: runtime
+      # kotoba, the Japanese lookup yomu shares with tsundoku, is built in from
+      # beside yomu (package.json: "kotoba": "link:../kotoba"): a checkout of
+      # masshirodev/kotoba has to sit at ../kotoba wherever this is built.
+      additional_contexts:
+        kotoba: ../kotoba
     container_name: yomu-app
     restart: unless-stopped
     init: true

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { Token } from '$lib/tokenize';
-	import { toRomaji } from '$lib/romaji';
+	import type { Token } from 'kotoba';
+	import { toRomaji } from 'kotoba';
 
 	type Sense = { pos: string[]; misc: string[]; info: string[]; gloss: string[] };
 	type Entry = { id: string; kanji: string[]; kana: string[]; senses: Sense[]; common: boolean };

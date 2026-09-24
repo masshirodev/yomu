@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { track } from '$lib/telemetry';
 	import MixedText from './MixedText.svelte';
-	import type { Token } from '$lib/tokenize';
+	import type { Token } from 'kotoba';
 
 	type Explanation = {
 		grammar: { point: string; explanation: string }[];

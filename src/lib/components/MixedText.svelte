@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tokenize, type Token } from '$lib/tokenize';
+	import { tokenize, type Token } from 'kotoba';
 	import { splitRuns, isReadable, type Run } from '$lib/mixed';
 
 	/**

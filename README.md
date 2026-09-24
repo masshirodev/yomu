@@ -51,6 +51,18 @@ These are load-bearing. Breaking them makes the tool actively worse than nothing
 The tokenizer and dictionary run **in the browser**, not on the server: the
 machine playing the game has spare cores, and the VPS does not.
 
+Both come from **kotoba** (`../kotoba`, `masshirodev/kotoba`, private), the
+Japanese lookup yomu shares with tsundoku since 2026-09-24: tokenizing
+(kuromoji), furigana, romaji, name merging, the mining rules and the card
+itself (`composeCard`), and JMdict on the server (`kotoba/server`, wrapped by
+`src/lib/server/dict.ts`). yomu keeps what's its own: the model's half of a
+card (`src/lib/enrich.ts`), works, the parser, explanations. kotoba is a
+path dependency (`"kotoba": "link:../kotoba"`), so **a checkout of it has to
+sit beside yomu** wherever yomu is built: `yarn install` there once, and
+`yarn prepare` copies its kuromoji dictionary into `static/dict`. JMdict is
+`YOMU_JMDICT`, else `KOTOBA_JMDICT`, else the shared
+`~/.local/share/kotoba/jmdict.db` (`yarn build:dict --out …` makes one).
+
 Ingest is source-agnostic. The clipboard bridge posts today; a TextractorCLI
 reader or an OCR fallback would post the same shape, and nothing downstream
 knows the difference.
@@ -118,6 +130,10 @@ forward-auth like the rest of the homelab.
 ```sh
 cd ../ansible && ansible-playbook playbooks/deploy.yml -e service=yomu
 ```
+
+The image builds kotoba in from `../kotoba` (compose's `additional_contexts`;
+by hand, `docker build --build-context kotoba=../kotoba .`), so the host
+building it needs a checkout of `masshirodev/kotoba` beside yomu.
 
 `/api/ingest` is the one path Caddy lets past Authentik, because the bridge runs
 on the machine playing the game and cannot complete an interactive login. It is

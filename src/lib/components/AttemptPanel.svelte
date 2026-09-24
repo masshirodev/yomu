@@ -1,6 +1,6 @@
 <script lang="ts">
 	import MixedText from './MixedText.svelte';
-	import type { Token } from '$lib/tokenize';
+	import type { Token } from 'kotoba';
 
 	type Verdict = {
 		gist: 'correct' | 'partial' | 'missed';

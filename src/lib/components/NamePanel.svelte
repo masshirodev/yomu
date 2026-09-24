@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { withWork } from '$lib/work';
-	import { toRomaji } from '$lib/romaji';
+	import { toRomaji } from 'kotoba';
 
 	type NameRow = { surface: string; reading: string | null; seen_count: number };
 

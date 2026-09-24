@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { SESSION_IDLE_MS, type AdvanceSample, type LookupSample } from '$lib/stats';
-import type { LookupRecord } from '$lib/mining';
+import type { LookupRecord } from 'kotoba';
 import type { CharacterFact, ContextLine, StoryDigest } from '$lib/context';
 
 const DB_PATH = process.env.YOMU_DB ?? 'data/yomu.db';

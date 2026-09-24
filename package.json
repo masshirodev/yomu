@@ -7,20 +7,20 @@
 		"dev": "vite dev --port 42139",
 		"build": "vite build",
 		"preview": "vite preview",
-		"prepare": "svelte-kit sync && node scripts/sync-dict.js || echo ''",
+		"prepare": "svelte-kit sync && node node_modules/kotoba/scripts/sync-dict.js static/dict || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"test": "vitest run",
-		"sync:dict": "node scripts/sync-dict.js",
-		"build:dict": "node --max-old-space-size=2048 scripts/build-dict.js"
+		"sync:dict": "node node_modules/kotoba/scripts/sync-dict.js static/dict",
+		"build:dict": "node --max-old-space-size=2048 node_modules/kotoba/scripts/build-dict.js"
 	},
 	"dependencies": {
-		"@patdx/kuromoji": "^1.0.4",
 		"@sveltejs/adapter-node": "^5.5.7",
 		"@types/better-sqlite3": "^7.6.13",
-		"better-sqlite3": "^12.11.1"
+		"better-sqlite3": "^12.11.1",
+		"kotoba": "link:../kotoba"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

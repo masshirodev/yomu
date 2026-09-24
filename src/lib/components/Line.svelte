@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { tokenize, type Token } from '$lib/tokenize';
-	import { applyNames, type NameEntry } from '$lib/names';
-	import { furigana } from '$lib/furigana';
+	import { tokenize, type Token } from 'kotoba';
+	import { applyNames, type NameEntry } from 'kotoba';
+	import { furigana } from 'kotoba';
 	import { track } from '$lib/telemetry';
 
 	type Props = {

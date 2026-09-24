@@ -12,10 +12,10 @@ import {
 } from '$lib/server/db';
 import { lookup } from '$lib/server/dict';
 import { createNote, latticeConfigured, LatticeError } from '$lib/server/lattice';
-import { rankCandidates } from '$lib/mining';
+import { rankCandidates } from 'kotoba';
 import { resolveWork } from '$lib/server/work';
-import { composeCard } from '$lib/enrich';
-import { furigana } from '$lib/furigana';
+import { composeCard } from 'kotoba';
+import { furigana } from 'kotoba';
 
 const MAX_CANDIDATES = 40;
 

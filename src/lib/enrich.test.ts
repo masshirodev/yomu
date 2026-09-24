@@ -1,15 +1,13 @@
 import { describe, expect, it } from 'vitest';
+// The card functions live in kotoba now; these tests stay, as yomu's cards.
+import { annotateSentence, bracketFurigana, composeCard, furigana } from 'kotoba';
 import {
-	annotateSentence,
-	bracketFurigana,
 	buildEnrichPrompt,
-	composeCard,
 	ENRICH_RULES,
 	matchEnrichments,
 	parseBrackets,
 	romanizeName
 } from './enrich';
-import { furigana } from './furigana';
 
 const align = (surface: string, reading: string | null) => furigana(surface, reading);
 
