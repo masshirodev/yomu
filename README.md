@@ -51,7 +51,7 @@ These are load-bearing. Breaking them makes the tool actively worse than nothing
 The tokenizer and dictionary run **in the browser**, not on the server: the
 machine playing the game has spare cores, and the VPS does not.
 
-Both come from **kotoba** (`../kotoba`, `masshirodev/kotoba`, private), the
+Both come from **kotoba** (`../kotoba`, `masshirodev/kotoba`), the
 Japanese lookup yomu shares with tsundoku since 2026-09-24: tokenizing
 (kuromoji), furigana, romaji, name merging, the mining rules and the card
 itself (`composeCard`), and JMdict on the server (`kotoba/server`, wrapped by
@@ -82,6 +82,10 @@ yarn run check      # NOT `yarn check` -- yarn 1 has a builtin that shadows it
 yarn lint
 yarn test
 ```
+
+CI (`.github/workflows/ci.yml`) runs the check, lint and tests on every push to
+`main` and every pull request, with kotoba's `main` checked out beside yomu as
+above. kotoba's own CI runs this suite too, against each kotoba commit.
 
 The parser is pure and tested against real Phase 0 capture output, so it can be
 iterated without launching the game — which otherwise costs a full Proton start

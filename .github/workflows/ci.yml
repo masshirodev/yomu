@@ -1,0 +1,36 @@
+# Checks every push to main and every pull request. The repository is public,
+# so Actions minutes are free and this is where its CI belongs.
+#
+# yomu links kotoba by path (link:../kotoba), so kotoba is checked out beside
+# it, as on the workstation, from its main branch.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: yomu
+      - uses: actions/checkout@v4
+        with:
+          repository: masshirodev/kotoba
+          path: kotoba
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: yarn install --frozen-lockfile
+        working-directory: kotoba
+      - run: yarn install --frozen-lockfile
+        working-directory: yomu
+      - run: yarn run check
+        working-directory: yomu
+      - run: yarn run lint
+        working-directory: yomu
+      - run: yarn run test
+        working-directory: yomu
