@@ -1,0 +1,16 @@
+{
+	"name": "yomu",
+	"title": "Yomu",
+	"stack": "sveltekit",
+	"visibility": "public",
+	"owner": "masshirodev",
+	"ports": {
+		"dev": 42139,
+		"preview": 42149,
+		"e2e": 42150,
+		"ci_e2e": 4441
+	},
+	"floor": 38,
+	"board": "yomu",
+	"skip": []
+}

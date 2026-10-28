@@ -1,0 +1,57 @@
+#!/usr/bin/env sh
+
+# Staged lint and format only, so a commit stays in the seconds. The suite and
+# its coverage floor run once per push in pre-push. See doc/TESTING.md.
+#
+# Skip flags (set to any non-empty value):
+#   SKIP_LINT SKIP_FORMAT SKIP_AGENT_DOCS SKIP_ALL
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+DIM='\033[2m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+step() { printf "\n${CYAN}${BOLD}> %s${RESET}\n" "$1"; }
+ok() { printf "${GREEN}[ok] %s${RESET}\n" "$1"; }
+skip() { printf "${YELLOW}[skip] %s${RESET}\n" "$1"; }
+fail() { printf "${RED}[fail] %s${RESET}\n" "$1"; }
+
+if [ -n "$SKIP_ALL" ]; then
+	printf "${YELLOW}${BOLD}pre-commit: SKIP_ALL set - skipping every check${RESET}\n"
+	exit 0
+fi
+
+printf "${BOLD}pre-commit: running staged checks${RESET}\n"
+printf "${DIM}  skip flags: SKIP_LINT SKIP_FORMAT SKIP_AGENT_DOCS SKIP_ALL${RESET}\n"
+
+if [ -n "$SKIP_LINT" ] && [ -n "$SKIP_FORMAT" ]; then
+	skip "lint + format"
+else
+	step "lint + format (staged files)"
+	if ! SKIP_LINT="$SKIP_LINT" SKIP_FORMAT="$SKIP_FORMAT" yarn run lint-staged; then
+		fail "lint/format failed"
+		exit 1
+	fi
+	ok "lint + format passed"
+fi
+
+# Agent instruction files have hard size limits (32 KB a file for Codex, 150 KB in
+# total for Claude Code; "Instruction files stay small" in ~/AGENTS.md). The checker
+# lives in the dotfiles, so a machine without them skips rather than fails.
+if [ -n "$SKIP_AGENT_DOCS" ]; then
+	skip "agent instruction file budget"
+elif command -v agent-docs-budget >/dev/null 2>&1; then
+	step "agent instruction file budget"
+	if ! agent-docs-budget --check .; then
+		fail "an agent instruction file is over budget"
+		exit 1
+	fi
+	ok "instruction files within budget"
+else
+	skip "agent-docs-budget not installed"
+fi
+
+printf "\n${GREEN}${BOLD}[ok] pre-commit checks passed${RESET}\n"

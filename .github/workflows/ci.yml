@@ -1,5 +1,7 @@
-# Checks every push to main and every pull request. The repository is public,
-# so Actions minutes are free and this is where its CI belongs.
+# The release tier of doc/TESTING.md on every push to main and every pull
+# request: lint, the typecheck, the unit suite with its 38% coverage floor, and
+# the browser suite with the design sweep. The repository is public, so Actions
+# minutes are free and this is where its CI belongs.
 #
 # yomu links kotoba by path (link:../kotoba), so kotoba is checked out beside
 # it, as on the workstation, from its main branch.
@@ -13,6 +15,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # A fresh checkout has no hooks installed, and `yarn run check` asks
+      # whether they are armed before it typechecks. There is nothing to arm here.
+      SKIP_HOOKS: 1
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,9 +34,23 @@ jobs:
         working-directory: kotoba
       - run: yarn install --frozen-lockfile
         working-directory: yomu
-      - run: yarn run check
-        working-directory: yomu
       - run: yarn run lint
         working-directory: yomu
-      - run: yarn run test
+      - run: yarn run check
         working-directory: yomu
+      # Ubuntu, unlike the workstation, needs the browser's system libraries.
+      - run: npx playwright install --with-deps chromium
+        working-directory: yomu
+      - name: Unit suite, 38% floor
+        run: yarn run test:coverage
+        working-directory: yomu
+      - name: Browser suite and design sweep
+        run: yarn run test:e2e
+        working-directory: yomu
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            yomu/playwright-report
+            yomu/test-results

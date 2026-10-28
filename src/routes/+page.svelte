@@ -165,7 +165,9 @@
 </svelte:head>
 
 <div class="mx-auto flex h-screen max-w-3xl flex-col">
-	<header class="flex items-center justify-between border-b border-neutral-800 px-6 py-3">
+	<header
+		class="flex flex-wrap items-center justify-between gap-y-2 border-b border-neutral-800 px-6 py-3"
+	>
 		<div class="flex items-baseline gap-3">
 			<h1 class="font-mono text-sm tracking-widest text-neutral-500 uppercase">yomu</h1>
 			{#if work}
@@ -188,7 +190,7 @@
 			{/if}
 		</div>
 
-		<div class="flex items-center gap-4 font-mono text-xs text-neutral-600">
+		<div class="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs text-neutral-600">
 			<div class="flex overflow-hidden rounded border border-neutral-800">
 				{#each MODES as mode (mode)}
 					<button

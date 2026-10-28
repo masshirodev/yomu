@@ -27,3 +27,12 @@ vite.config.ts.timestamp-*
 
 # Kuromoji dictionary, ~18MB, synced from node_modules by `yarn sync:dict`.
 /static/dict
+
+# Machine-local and scratch, never committed (AGENTS.md)
+AGENTS.local.md
+temp/
+
+# Test output
+coverage/
+playwright-report/
+test-results

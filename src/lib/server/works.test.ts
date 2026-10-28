@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -14,7 +13,9 @@ import { join } from 'node:path';
 let dir: string;
 
 async function freshDb() {
-	dir = mkdtempSync(join(tmpdir(), 'yomu-works-'));
+	// Under the repository's temp/, not /tmp, which is RAM on the workstation.
+	mkdirSync('temp', { recursive: true });
+	dir = mkdtempSync(join('temp', 'yomu-works-'));
 	process.env.YOMU_DB = join(dir, 'test.db');
 	vi.resetModules();
 	return await import('./db');
